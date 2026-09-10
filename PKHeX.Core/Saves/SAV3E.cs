@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -28,13 +29,7 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     }
 
     public override PlayerBag3E Inventory => new(this);
-
-    protected override int EventFlag => 0x13D8;
-    protected override int EventWork => 0x1504;
     public override int MaxItemID => Legal.MaxItemID_3_E;
-
-    protected override int PokeDex => 0x18; // small
-    protected override int DaycareOffset => 0x3198; // large
 
     // storage
     private void Initialize() => Box = 0;
@@ -78,21 +73,6 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     private const int OFS_TrendyWord = 0x2F88;
     private const int OFS_TrainerHillRecord = 0x3718;
 
-    protected override InventoryPouch3[] GetItems()
-    {
-        const int max = 120;
-        var info = ItemStorage3E.Instance;
-        return
-        [
-            new(InventoryType.Items, info, max, OFS_PouchHeldItem, (OFS_PouchKeyItem - OFS_PouchHeldItem) / 4),
-            new(InventoryType.KeyItems, info, 1, OFS_PouchKeyItem, (OFS_PouchBalls - OFS_PouchKeyItem) / 4),
-            new(InventoryType.Balls, info, max, OFS_PouchBalls, (OFS_PouchTMHM - OFS_PouchBalls) / 4),
-            new(InventoryType.TMHMs, info, max, OFS_PouchTMHM, (OFS_PouchBerry - OFS_PouchTMHM) / 4),
-            new(InventoryType.Berries, info, 999, OFS_PouchBerry, 46),
-            new(InventoryType.PCItems, info, 999, OFS_PCItem, (OFS_PouchHeldItem - OFS_PCItem) / 4),
-        ];
-    }
-
     private Span<byte> PokeBlockData => Large.AsSpan(0x9B0, PokeBlock3Case.SIZE);
 
     public PokeBlock3Case PokeBlocks
@@ -100,8 +80,6 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
         get => new(PokeBlockData);
         set => value.Write(PokeBlockData);
     }
-
-    protected override int SeenOffset2 => 0xAF0;
 
     public DecorationInventory3 Decorations => new(Large.AsSpan(0x289C, DecorationInventory3.SIZE));
 
@@ -129,16 +107,12 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
         }
     }
 
-    protected override int MailOffset => 0x2D48;
-
     protected override int GetDaycareEXPOffset(int slot) => GetDaycareSlotOffset(slot + 1) - 4; // @ end of each pk slot
     uint IDaycareRandomState<uint>.Seed // after the 2 slots, before the step counter
     {
         get => LargeBlock.DaycareSeed;
         set => LargeBlock.DaycareSeed = value;
     }
-
-    protected override int ExternalEventData => 0x331B;
 
     /// <summary>
     /// Max RPM for 2, 3 and 4 players. Each value unit represents 0.01 RPM. Value 0 if no record.
@@ -176,7 +150,6 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     public uint GetTrainerHillRecord(TrainerHillMode3E mode)
     {
         return ReadUInt32LittleEndian(Large.AsSpan(OFS_TrainerHillRecord + ((byte)mode * 4)));
-    }
 
     public void SetTrainerHillRecord(TrainerHillMode3E mode, uint value)
     {
@@ -187,12 +160,9 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     #region eBerry
     private const int OFFSET_EBERRY = 0x3360;
     private const int SIZE_EBERRY = 0x34;
-
-    public override Span<byte> EReaderBerry() => Large.AsSpan(OFFSET_EBERRY, SIZE_EBERRY);
     #endregion
 
     #region eTrainer
-    public override Span<byte> EReaderTrainer() => Small.AsSpan(0xBEC, 0xBC);
     #endregion
 
     public int WonderOffset => WonderNewsOffset;
@@ -212,16 +182,9 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     // 0x344: uint[5], uint[5] tracking?
 
     private Span<byte> MysterySpan => Large.AsSpan(0x3728, MysteryEvent3.SIZE);
-    public override Gen3MysteryData MysteryData
-    {
-        get => new MysteryEvent3(MysterySpan.ToArray());
-        set => SetData(MysterySpan, value.Data);
-    }
 
     private Span<byte> RecordMixingData => Large.AsSpan(0x3B14, RecordMixing3Gift.SIZE);
     public RecordMixing3Gift RecordMixingGift { get => new(RecordMixingData.ToArray()); set => SetData(RecordMixingData, value.Data); }
-
-    protected override int SeenOffset3 => 0x3B24;
 
     private const int Walda = 0x3D70;
     public ushort WaldaBackgroundColor { get => ReadUInt16LittleEndian(Large.AsSpan(Walda + 0)); set => WriteUInt16LittleEndian(Large.AsSpan(Walda + 0), value); }

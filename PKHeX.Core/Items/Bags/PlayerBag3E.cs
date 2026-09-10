@@ -11,11 +11,11 @@ public sealed class PlayerBag3E : PlayerBag, IPlayerBag3
 
     private static InventoryPouch3[] GetPouches(ItemStorage3E info) =>
     [
-        new(0x0C8, 30, 099, info, Items),
-        new(0x140, 30, 001, info, KeyItems),
-        new(0x1B8, 16, 099, info, Balls),
-        new(0x1F8, 64, 099, info, TMHMs),
-        new(0x2F8, 46, 999, info, Berries),
+        new(0x0C8, 120, 099, info, Items),
+        new(0x2A8, 30, 001, info, KeyItems),
+        new(0x320, 16, 099, info, Balls),
+        new(0x360, 64, 099, info, TMHMs),
+        new(0x460, 46, 999, info, Berries),
         new(0x000, 50, 999, info, PCItems),
     ];
 
