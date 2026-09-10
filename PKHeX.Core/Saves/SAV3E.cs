@@ -73,7 +73,7 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     private const int OFS_TrendyWord = 0x2F88;
     private const int OFS_TrainerHillRecord = 0x3718;
 
-    private Span<byte> PokeBlockData => Large.AsSpan(0x9B0, PokeBlock3Case.SIZE);
+    private Span<byte> PokeBlockData => Large.Slice(0x9B0, PokeBlock3Case.SIZE);
 
     public PokeBlock3Case PokeBlocks
     {
@@ -81,9 +81,9 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
         set => value.Write(PokeBlockData);
     }
 
-    public DecorationInventory3 Decorations => new(Large.AsSpan(0x289C, DecorationInventory3.SIZE));
+    public DecorationInventory3 Decorations => new(Large.Slice(0x289C, DecorationInventory3.SIZE));
 
-    private Span<byte> SwarmSpan => Large.AsSpan(0x2CF8, Swarm3.SIZE);
+    private Span<byte> SwarmSpan => Large.Slice(0x2CF8, Swarm3.SIZE);
     public Swarm3 Swarm
     {
         get => new(SwarmSpan.ToArray());
@@ -124,7 +124,7 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     {
         if ((uint)index >= BerryBlenderRPMRecordCount)
             throw new ArgumentOutOfRangeException(nameof(index));
-        return Large.AsSpan(OFS_BerryBlenderRecord + (index * 2));
+        return Large.Slice(OFS_BerryBlenderRecord + (index * 2));
     }
 
     public ushort GetBerryBlenderRPMRecord(int index) => ReadUInt16LittleEndian(GetBlenderRPMSpan(index));
@@ -149,12 +149,12 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     /** Each value unit represents 1/60th of a second. Value 0 if no record. */
     public uint GetTrainerHillRecord(TrainerHillMode3E mode)
     {
-        return ReadUInt32LittleEndian(Large.AsSpan(OFS_TrainerHillRecord + ((byte)mode * 4)));
+        return ReadUInt32LittleEndian(Large.Slice(OFS_TrainerHillRecord + ((byte)mode * 4)));
     }
 
     public void SetTrainerHillRecord(TrainerHillMode3E mode, uint value)
     {
-        WriteUInt32LittleEndian(Large.AsSpan(OFS_TrainerHillRecord + ((byte)mode * 4)), value);
+        WriteUInt32LittleEndian(Large.Slice(OFS_TrainerHillRecord + ((byte)mode * 4)), value);
         State.Edited = true;
     }
 
@@ -171,9 +171,9 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     private int WonderCardOffset => WonderNewsOffset + (Japanese ? WonderNews3.SIZE_JAP : WonderNews3.SIZE);
     private int WonderCardExtraOffset => WonderCardOffset + (Japanese ? WonderCard3.SIZE_JAP : WonderCard3.SIZE);
 
-    private Span<byte> WonderNewsData => Large.AsSpan(WonderNewsOffset, Japanese ? WonderNews3.SIZE_JAP : WonderNews3.SIZE);
-    private Span<byte> WonderCardData => Large.AsSpan(WonderCardOffset, Japanese ? WonderCard3.SIZE_JAP : WonderCard3.SIZE);
-    private Span<byte> WonderCardExtraData => Large.AsSpan(WonderCardExtraOffset, WonderCard3Extra.SIZE);
+    private Span<byte> WonderNewsData => Large.Slice(WonderNewsOffset, Japanese ? WonderNews3.SIZE_JAP : WonderNews3.SIZE);
+    private Span<byte> WonderCardData => Large.Slice(WonderCardOffset, Japanese ? WonderCard3.SIZE_JAP : WonderCard3.SIZE);
+    private Span<byte> WonderCardExtraData => Large.Slice(WonderCardExtraOffset, WonderCard3Extra.SIZE);
 
     public WonderNews3 WonderNews { get => new(WonderNewsData.ToArray()); set => SetData(WonderNewsData, value.Data); }
     public WonderCard3 WonderCard { get => new(WonderCardData.ToArray()); set => SetData(WonderCardData, value.Data); }
@@ -182,19 +182,19 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     // 0x340: news MENewsJisanStruct
     // 0x344: uint[5], uint[5] tracking?
 
-    private Span<byte> MysterySpan => Large.AsSpan(0x3728, MysteryEvent3.SIZE);
+    private Span<byte> MysterySpan => Large.Slice(0x3728, MysteryEvent3.SIZE);
 
-    private Span<byte> RecordMixingData => Large.AsSpan(0x3B14, RecordMixing3Gift.SIZE);
+    private Span<byte> RecordMixingData => Large.Slice(0x3B14, RecordMixing3Gift.SIZE);
     public RecordMixing3Gift RecordMixingGift { get => new(RecordMixingData.ToArray()); set => SetData(RecordMixingData, value.Data); }
 
     private const int Walda = 0x3D70;
-    public ushort WaldaBackgroundColor { get => ReadUInt16LittleEndian(Large.AsSpan(Walda + 0)); set => WriteUInt16LittleEndian(Large.AsSpan(Walda + 0), value); }
-    public ushort WaldaForegroundColor { get => ReadUInt16LittleEndian(Large.AsSpan(Walda + 2)); set => WriteUInt16LittleEndian(Large.AsSpan(Walda + 2), value); }
+    public ushort WaldaBackgroundColor { get => ReadUInt16LittleEndian(Large.Slice(Walda + 0)); set => WriteUInt16LittleEndian(Large.Slice(Walda + 0), value); }
+    public ushort WaldaForegroundColor { get => ReadUInt16LittleEndian(Large.Slice(Walda + 2)); set => WriteUInt16LittleEndian(Large.Slice(Walda + 2), value); }
     public byte WaldaIconID { get => Large[Walda + 0x14]; set => Large[Walda + 0x14] = value; }
     public byte WaldaPatternID { get => Large[Walda + 0x15]; set => Large[Walda + 0x15] = value; }
     public bool WaldaUnlocked { get => Large[Walda + 0x16] != 0; set => Large[Walda + 0x16] = (byte)(value ? 1 : 0); }
 
-    private Memory<byte> SecretBaseData => Large.AsMemory(0x1C04, SecretBaseManager3.BaseCount * SecretBase3.SIZE);
+    private Memory<byte> SecretBaseData => LargeBuffer.Slice(0x1C04, SecretBaseManager3.BaseCount * SecretBase3.SIZE);
     public SecretBaseManager3 SecretBases => new(SecretBaseData);
 
     private const int Painting = 0x2F90;
@@ -202,7 +202,7 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     private Span<byte> GetPaintingSpan(int index)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, CountPaintings, nameof(index));
-        return Large.AsSpan(Painting + (Paintings3.SIZE * index), Paintings3.SIZE * CountPaintings);
+        return Large.Slice(Painting + (Paintings3.SIZE * index), Paintings3.SIZE * CountPaintings);
     }
     public Paintings3 GetPainting(int index) => new(GetPaintingSpan(index).ToArray(), Japanese);
     public void SetPainting(int index, Paintings3 value) => value.Data.CopyTo(GetPaintingSpan(index));
