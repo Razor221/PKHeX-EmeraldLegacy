@@ -7,8 +7,7 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 9 Tera Raid Encounter
 /// </summary>
-public sealed record EncounterTera9
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PK9>, ITeraRaid9, IMoveset, IFlawlessIVCount, IFixedGender, IEncounterFormRandom
+public sealed record EncounterTera9 : ITeraRaid9, IEncounterFormRandom
 {
     public byte Generation => 9;
     public EntityContext Context => EntityContext.Gen9;
@@ -19,7 +18,7 @@ public sealed record EncounterTera9
     public Ball FixedBall => Ball.None;
     public bool IsEgg => false;
     public bool IsShiny => Shiny == Shiny.Always;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
 
     public required ushort Species { get; init; }
     public required byte Form { get; init; }
@@ -172,17 +171,15 @@ public sealed record EncounterTera9
     };
 
     #region Generating
-    PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria) => ConvertToPKM(tr, criteria);
-    PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr);
     public PK9 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PK9 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        var pi = PersonalTable.SV[Species, Form];
+        var pi = GetPersonal();
         var pk = new PK9
         {
-            Language = lang,
+            Language = language,
             Species = Species,
             Form = Form,
             CurrentLevel = LevelMin,
@@ -193,7 +190,7 @@ public sealed record EncounterTera9
             Version = version,
             Ball = (byte)Ball.Poke,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             ObedienceLevel = LevelMin,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
@@ -207,18 +204,32 @@ public sealed record EncounterTera9
         return pk;
     }
 
-    private void SetPINGA(PK9 pk, EncounterCriteria criteria, PersonalInfo9SV pi)
+    private PersonalInfo9SV GetPersonal() => PersonalTable.SV[Species, Form];
+
+    private void SetPINGA(PK9 pk, in EncounterCriteria criteria, PersonalInfo9SV pi)
+    {
+        var param = GetParam(pi);
+        var init = Util.Rand.Rand64();
+        var success = this.TryApply32(pk, init, param, criteria);
+        if (!success && !this.TryApply32(pk, init, param, criteria.WithoutIVs()))
+            this.TryApply32(pk, init, param, EncounterCriteria.Unrestricted);
+    }
+
+    private GenerateParam9 GetParam(PersonalInfo9SV pi)
     {
         const byte rollCount = 1;
         const byte undefinedSize = 0;
-        var param = new GenerateParam9(Species, pi.Gender, FlawlessIVCount, rollCount,
+        return new GenerateParam9(Species, pi.Gender, FlawlessIVCount, rollCount,
             undefinedSize, undefinedSize, undefinedSize, undefinedSize,
             Ability, Shiny);
+    }
 
-        var init = Util.Rand.Rand64();
-        var success = this.TryApply32(pk, init, param, criteria);
-        if (!success)
-            this.TryApply32(pk, init, param, EncounterCriteria.Unrestricted);
+    public bool GenerateSeed32(PKM pk, uint seed)
+    {
+        var pk9 = (PK9)pk;
+        var param = GetParam(GetPersonal());
+        Encounter9RNG.GenerateData(pk9, param, EncounterCriteria.Unrestricted, seed);
+        return true;
     }
     #endregion
 
@@ -229,7 +240,7 @@ public sealed record EncounterTera9
             return false;
         if (Gender != FixedGenderUtil.GenderRandom && pk.Gender != Gender)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -237,12 +248,6 @@ public sealed record EncounterTera9
             return false;
 
         return true;
-    }
-
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-        return pk.EggLocation == expect;
     }
 
     private bool IsMatchLocation(PKM pk)

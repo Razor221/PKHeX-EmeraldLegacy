@@ -8,7 +8,7 @@ namespace PKHeX.Core;
 /// </summary>
 public abstract class G3PKM : PKM, IRibbonSetEvent3, IRibbonSetCommon3, IRibbonSetUnique3, IRibbonSetOnly3, IRibbonSetRibbons, IContestStats, IAppliedMarkings3
 {
-    protected G3PKM(byte[] data) : base(data) { }
+    protected G3PKM(Memory<byte> data) : base(data) { }
     protected G3PKM([ConstantExpected] int size) : base(size) { }
 
     public abstract override PersonalInfo3 PersonalInfo { get; }
@@ -17,7 +17,7 @@ public abstract class G3PKM : PKM, IRibbonSetEvent3, IRibbonSetCommon3, IRibbonS
     public sealed override ushort MaxMoveID => Legal.MaxMoveID_3;
     public sealed override ushort MaxSpeciesID => Legal.MaxSpeciesID_3;
     public sealed override int MaxAbilityID => Legal.MaxAbilityID_3;
-    public sealed override int MaxItemID => Legal.MaxItemID_3;
+    public sealed override int MaxItemID => Legal.MaxItemID_3_E;
     public sealed override int MaxBallID => Legal.MaxBallID_3;
     public sealed override GameVersion MaxGameID => Legal.MaxGameID_3;
     public sealed override int MaxIV => 31;
@@ -28,7 +28,7 @@ public abstract class G3PKM : PKM, IRibbonSetEvent3, IRibbonSetCommon3, IRibbonS
     // Generated Attributes
     public sealed override uint PSV => ((PID >> 16) ^ (PID & 0xFFFF)) >> 3;
     public sealed override uint TSV => (uint)(TID16 ^ SID16) >> 3;
-    public sealed override bool Japanese => Language == (int)LanguageID.Japanese;
+    public sealed override bool Korean => false;
 
     public sealed override int Ability { get => PersonalInfo.GetAbility(AbilityBit); set { } }
     public sealed override uint EncryptionConstant { get => PID; set { } }
@@ -44,15 +44,13 @@ public abstract class G3PKM : PKM, IRibbonSetEvent3, IRibbonSetCommon3, IRibbonS
 
     public bool GetMarking(int index)
     {
-        if ((uint)index >= MarkingCount)
-            throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)MarkingCount);
         return ((MarkingValue >> index) & 1) != 0;
     }
 
     public void SetMarking(int index, bool value)
     {
-        if ((uint)index >= MarkingCount)
-            throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)MarkingCount);
         MarkingValue = (byte)((MarkingValue & ~(1 << index)) | ((value ? 1 : 0) << index));
     }
 

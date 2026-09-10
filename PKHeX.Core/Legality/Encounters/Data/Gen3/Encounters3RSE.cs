@@ -17,10 +17,10 @@ internal static class Encounters3RSE
     internal static readonly EncounterArea3[] SlotsS = GetRegular("s", "sa"u8, S);
     internal static readonly EncounterArea3[] SlotsE = GetRegular("e", "em"u8, E);
 
-    private static EncounterArea3[] GetRegular([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident, [ConstantExpected] GameVersion game)
-        => EncounterArea3.GetAreas(Get(resource, ident), game);
-    private static EncounterArea3[] GetSwarm([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident, [ConstantExpected] GameVersion game)
-        => EncounterArea3.GetAreasSwarm(Get(resource, ident), game);
+    private static EncounterArea3[] GetRegular([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident, [ConstantExpected] GameVersion version)
+        => EncounterArea3.GetAreas(Get(resource, ident), version);
+    private static EncounterArea3[] GetSwarm([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident, [ConstantExpected] GameVersion version)
+        => EncounterArea3.GetAreasSwarm(Get(resource, ident), version);
 
     private static readonly string[] TrainersPikachu = [string.Empty, "コロシアム", "COLOS", "COLOSSEUM", "ARENA", "COLOSSEUM", string.Empty, "CLAUDIO"];
     private static readonly string[] TrainersCelebi = [string.Empty, "アゲト", "AGATE", "SAMARAGD", "SOFO", "EMERITAE", string.Empty, "ÁGATA"];
@@ -40,7 +40,7 @@ internal static class Encounters3RSE
     ];
 
     private const string tradeRSE = "traderse";
-    private static readonly string[][] TradeNames = Util.GetLanguageStrings7(tradeRSE);
+    private static readonly string[][] TradeNames = GetLanguageStrings(tradeRSE, 7);
 
     public static readonly EncounterStatic3[] StaticRSE =
     [
@@ -61,6 +61,7 @@ internal static class Encounters3RSE
         // Stationary
         new(352, 30, RSE) { Location = 034 }, // Kecleon @ Route 119
         new(352, 30, RSE) { Location = 035 }, // Kecleon @ Route 120
+        new(100, 25, RSE) { Location = 062 }, // Voltorb @ New Mauville
 
         // Stationary Lengendary
         new(377, 40, RSE) { Location = 082 }, // Regirock @ Desert Ruins
@@ -71,7 +72,7 @@ internal static class Encounters3RSE
 
     public static readonly EncounterStatic3[] StaticR =
     [
-        new(381, 40, R) { Roaming = true, Location = 016 }, // Latios
+        new(381, 40, R) { IsRoaming = true, Location = 016 }, // Latios
         new(380, 50, R) { Location = 073 }, // Latias @ Southern Island
         new(383, 45, R) { Location = 072 }, // Groudon @ Cave of Origin
 
@@ -80,7 +81,7 @@ internal static class Encounters3RSE
 
     public static readonly EncounterStatic3[] StaticS =
     [
-        new(380, 40, S) { Roaming = true, Location = 016 }, // Latias
+        new(380, 40, S) { IsRoaming = true, Location = 016 }, // Latias
         new(381, 50, S) { Location = 073 }, // Latios @ Southern Island
         new(382, 45, S) { Location = 072 }, // Kyogre @ Cave of Origin
 
@@ -89,8 +90,8 @@ internal static class Encounters3RSE
 
     public static readonly EncounterStatic3[] StaticE =
     [
-        new(380, 40, E) { Roaming = true, Location = 016 }, // Latias
-        new(381, 40, E) { Roaming = true, Location = 016 }, // Latios
+        new(380, 40, E) { IsRoaming = true, Location = 016 }, // Latias
+        new(381, 40, E) { IsRoaming = true, Location = 016 }, // Latios
         new(382, 70, E) { Location = 203 }, // Kyogre @ Marine Cave
         new(383, 70, E) { Location = 205 }, // Groudon @ Terra Cave
 

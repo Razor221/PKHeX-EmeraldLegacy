@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace PKHeX.Core;
 
@@ -33,57 +34,68 @@ public static class BoxManipUtil
         "Modify",
     ];
 
-    /// <summary>
-    /// Gets a <see cref="IBoxManip"/> reference that carries out the action of the requested <see cref="type"/>.
-    /// </summary>
-    /// <param name="type">Manipulation type.</param>
-    /// <returns>Reference to <see cref="IBoxManip"/>.</returns>
-    public static IBoxManip GetManip(this BoxManipType type)
+    extension(BoxManipType type)
     {
-        foreach (var category in ManipCategories)
+        /// <summary>
+        /// Gets a <see cref="IBoxManip"/> reference that carries out the action of the requested <see cref="type"/>.
+        /// </summary>
+        /// <returns>Reference to <see cref="IBoxManip"/>.</returns>
+        public IBoxManip GetManip()
         {
-            foreach (var manip in category)
+            foreach (var category in ManipCategories)
             {
-                if (manip.Type == type)
-                    return manip;
+                foreach (var manip in category)
+                {
+                    if (manip.Type == type)
+                        return manip;
+                }
             }
+            throw new ArgumentOutOfRangeException(nameof(type), type, null);
         }
-        throw new ArgumentOutOfRangeException(nameof(type), type, null);
-    }
 
-    /// <summary>
-    /// Gets the corresponding name from <see cref="ManipCategoryNames"/> for the requested <see cref="type"/>.
-    /// </summary>
-    /// <param name="type">Manipulation type.</param>
-    /// <returns>Category Name</returns>
-    public static string? GetManipCategoryName(this BoxManipType type)
-    {
-        for (int i = 0; i < ManipCategories.Length; i++)
+        /// <summary>
+        /// Gets the corresponding name from <see cref="ManipCategoryNames"/> for the requested <see cref="type"/>.
+        /// </summary>
+        /// <param name="name">Category Name</param>
+        /// <returns>Category Name</returns>
+        public bool TryGetManipCategoryName([NotNullWhen(true)] out string? name)
         {
-            foreach (var manip in ManipCategories[i])
+            for (int i = 0; i < ManipCategories.Length; i++)
             {
-                if (manip.Type == type)
-                    return ManipCategoryNames[i];
+                foreach (var manip in ManipCategories[i])
+                {
+                    if (manip.Type != type)
+                        continue;
+                    name = ManipCategoryNames[i];
+                    return true;
+                }
             }
+
+            name = null;
+            return false;
         }
-        return null;
     }
 
     /// <summary>
     /// Gets the corresponding name from <see cref="ManipCategoryNames"/> for the requested <see cref="manip"/>.
     /// </summary>
     /// <param name="manip">Manipulation type.</param>
+    /// <param name="name">Category Name</param>
     /// <returns>Category Name</returns>
-    public static string? GetManipCategoryName(this IBoxManip manip)
+    public static bool GetManipCategoryName(this IBoxManip manip, [NotNullWhen(true)] out string? name)
     {
         for (int i = 0; i < ManipCategories.Length; i++)
         {
             foreach (var m in ManipCategories[i])
             {
-                if (m == manip)
-                    return ManipCategoryNames[i];
+                if (m != manip)
+                    continue;
+                name = ManipCategoryNames[i];
+                return true;
             }
         }
-        return null;
+
+        name = null;
+        return false;
     }
 }

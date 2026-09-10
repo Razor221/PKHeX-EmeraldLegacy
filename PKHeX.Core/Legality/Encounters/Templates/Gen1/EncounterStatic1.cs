@@ -9,12 +9,12 @@ public sealed record EncounterStatic1(ushort Species, byte Level, GameVersion Ve
     public byte Generation => 1;
     public EntityContext Context => EntityContext.Gen1;
     public bool IsEgg => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public Ball FixedBall => Ball.Poke;
     public AbilityPermission Ability => AbilityPermission.OnlyHidden;
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort Location => 0;
+    ushort ILocation.Location => 0;
 
     private const byte LightBallPikachuCatchRate = 0xA3; // 163 - Light Ball
     public byte Form => 0;
@@ -34,24 +34,28 @@ public sealed record EncounterStatic1(ushort Species, byte Level, GameVersion Ve
 
     public PK1 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, Version);
-        var isJapanese = lang == (int)LanguageID.Japanese;
-        var pi = EncounterUtil.GetPersonal1(Version, Species);
+        var version = this.GetCompatibleVersion(tr.Version);
+        int language = (int)Language.GetSafeLanguage1((LanguageID)tr.Language, version);
+        var isJapanese = language == (int)LanguageID.Japanese;
+        var pi = EncounterUtil.GetPersonal1(version, Species);
         var pk = new PK1(isJapanese)
         {
             Species = Species,
             CurrentLevel = LevelMin,
             CatchRate = IsStarterPikachu ? LightBallPikachuCatchRate : pi.CatchRate,
-            DV16 = EncounterUtil.GetRandomDVs(Util.Rand),
+            DV16 = criteria.IsSpecifiedIVsAll() ? criteria.GetCombinedDVs()
+                : EncounterUtil.GetRandomDVs(Util.Rand, criteria.Shiny.IsShiny(), criteria.HiddenPowerType),
 
-            OriginalTrainerName = EncounterUtil.GetTrainerName(tr, lang),
+            OriginalTrainerName = EncounterUtil.GetTrainerName(tr, language),
             TID16 = tr.TID16,
             Type1 = pi.Type1,
             Type2 = pi.Type2,
         };
-        pk.SetNotNicknamed(lang);
+        pk.SetNotNicknamed(language);
+        if (criteria.Shiny.IsShiny())
+            pk.SetShiny();
 
-        EncounterUtil.SetEncounterMoves(pk, Version, LevelMin);
+        EncounterUtil.SetEncounterMoves(pk, version, LevelMin);
 
         pk.ResetPartyStats();
         return pk;
@@ -62,8 +66,6 @@ public sealed record EncounterStatic1(ushort Species, byte Level, GameVersion Ve
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
-            return false;
         if (!IsMatchLocation(pk))
             return false;
         if (Level > evo.LevelMax)
@@ -74,15 +76,6 @@ public sealed record EncounterStatic1(ushort Species, byte Level, GameVersion Ve
         if (Form != evo.Form && !FormInfo.IsFormChangeable(Species, Form, pk.Form, Context, pk.Context))
             return false;
         return true;
-    }
-
-    private static bool IsMatchEggLocation(PKM pk)
-    {
-        if (pk.Format <= 2)
-            return true;
-
-        var expect = pk is PB8 ? Locations.Default8bNone : 0;
-        return pk.EggLocation == expect;
     }
 
     public EncounterMatchRating GetMatchRating(PKM pk)
@@ -109,7 +102,7 @@ public sealed record EncounterStatic1(ushort Species, byte Level, GameVersion Ve
 
     private bool IsCatchRateValid(byte rate)
     {
-        if (ParseSettings.AllowGen1Tradeback && PK1.IsCatchRateHeldItem(rate))
+        if (ParseSettings.AllowGen1Tradeback && ItemConverter.IsCatchRateHeldItem(rate))
             return true;
 
         // Light Ball (Yellow) starter

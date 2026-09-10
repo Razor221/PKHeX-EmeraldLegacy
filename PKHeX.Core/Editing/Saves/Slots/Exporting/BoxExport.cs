@@ -86,7 +86,9 @@ public static class BoxExport
 
         int count = GetSlotCountForBox(boxSlotCount, box, total);
         int ctr = 0;
-        // Export each slot in the box.
+        // Export each slot in the box with party stats, to be nice to any external analysis.
+        bool isPartyFormat = sav.SIZE_BOXSLOT == sav.SIZE_PARTY;
+        Span<byte> data = stackalloc byte[sav.SIZE_PARTY];
         for (int slot = 0; slot < count; slot++)
         {
             var pk = sav.GetBoxSlotAtIndex(box, slot);
@@ -98,7 +100,13 @@ public static class BoxExport
 
             var fileName = GetFileName(pk, settings.FileIndexPrefix, namer, box, slot, boxSlotCount);
             var fn = Path.Combine(destPath, fileName);
-            File.WriteAllBytes(fn, pk.DecryptedPartyData);
+
+            // Assume that all PKM read for the loop all are the same shape; the if-else will always travel one path.
+            // We don't have to worry about lingering party data from a previous loop iteration.
+            if (!isPartyFormat)
+                pk.ForcePartyData(); // Rather than export all-zero party stats, calculate what they would be.
+            pk.WriteDecryptedDataParty(data);
+            File.WriteAllBytes(fn, data);
             ctr++;
         }
         return ctr;
@@ -119,7 +127,7 @@ public static class BoxExport
     private static string GetFolderName(SaveFile sav, int box, BoxExportFolderNaming mode)
     {
         var boxName = sav is IBoxDetailNameRead r ? r.GetBoxName(box) : BoxDetailNameExtensions.GetDefaultBoxName(box);
-        boxName = Util.CleanFileName(boxName);
+        boxName = PathUtil.CleanFileName(boxName);
         return mode switch
         {
             BoxExportFolderNaming.BoxName => boxName,
@@ -132,7 +140,7 @@ public static class BoxExport
     private static string GetFileName(PKM pk, BoxExportIndexPrefix mode, IFileNamer<PKM> namer, int box, int slot, int boxSlotCount)
     {
         var slotName = GetInnerName(namer, pk);
-        var fileName = Util.CleanFileName(slotName);
+        var fileName = PathUtil.CleanFileName(slotName);
         var prefix = GetPrefix(mode, box, slot, boxSlotCount);
 
         return $"{prefix}{fileName}.{pk.Extension}";
@@ -143,6 +151,7 @@ public static class BoxExport
         BoxExportIndexPrefix.None => string.Empty,
         BoxExportIndexPrefix.InAll => $"{(box * boxSlotCount) + slot:0000} - ",
         BoxExportIndexPrefix.InBox => $"{slot:00} - ",
+        BoxExportIndexPrefix.InBoxAndSlot => $"{box + 1:00}-{slot:00} - ",
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null),
     };
 
@@ -151,7 +160,7 @@ public static class BoxExport
         try
         {
             var slotName = namer.GetName(pk);
-            return Util.CleanFileName(slotName);
+            return PathUtil.CleanFileName(slotName);
         }
         catch { return "Name Error"; }
     }

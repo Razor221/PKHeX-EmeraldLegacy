@@ -43,7 +43,7 @@ public partial class SAV_DLC5 : Form
         Tab_BattleTest.Controls.Add(new Label
         {
             Text = "Not working. Needs research.",
-            ForeColor = Color.Red, Location = new(20,20),
+            ForeColor = WinFormsUtil.ColorWarn, Location = new(20,20),
             AutoSize = true,
         });
     }
@@ -163,12 +163,12 @@ public partial class SAV_DLC5 : Form
         if (data.Length == otherSize)
             Array.Resize(ref data, expectSize);
 
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         LastImportedFile = ofd.FileName;
         return true;
     }
 
-    private static void ExportFile(string extension, string name, byte[] data, string? initialName = null)
+    private static void ExportFile(string extension, string name, ReadOnlySpan<byte> data, string? initialName = null)
     {
         using var sfd = new SaveFileDialog();
         sfd.Filter = $"{name}|*.{extension}";
@@ -178,6 +178,38 @@ public partial class SAV_DLC5 : Form
         if (sfd.ShowDialog() != DialogResult.OK)
             return;
         File.WriteAllBytes(sfd.FileName, data);
+    }
+
+    private static string GetImportedMusicalName(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path).Trim();
+
+        var split = name.LastIndexOf(" - ", StringComparison.Ordinal);
+        if (split >= 0 && split + 3 < name.Length)
+            name = name.AsSpan()[(split + 3)..].Trim().ToString();
+
+        var suffix = name.LastIndexOf(" (", StringComparison.Ordinal);
+        if (suffix > 0 && name[^1] == ')' && IsLikelyLanguageTag(name.AsSpan()[(suffix + 2)..^1]))
+            name = name.AsSpan()[..suffix].TrimEnd().ToString();
+
+        if (name.Length > Musical5.MusicalNameMaxLength)
+            name = name.AsSpan()[..Musical5.MusicalNameMaxLength].TrimEnd().ToString();
+
+        return name;
+    }
+
+    private static bool IsLikelyLanguageTag(ReadOnlySpan<char> value)
+    {
+        if (value.Length is < 2 or > 5)
+            return false;
+
+        foreach (var c in value)
+        {
+            if ((uint)(c - 'A') > 'Z' - 'A')
+                return false;
+        }
+
+        return true;
     }
 
     private void B_ImportPNGCGear_Click(object sender, EventArgs e)
@@ -201,7 +233,7 @@ public partial class SAV_DLC5 : Form
             PB_CGearBackground.Image = CGearImage.GetBitmap(bg); // regenerate rather than reuse input
             B_ExportCGB.Enabled = B_ExportPNG.Enabled = true;
             if (CheckResult<CGearBackground>(result, out msg))
-                System.Media.SystemSounds.Asterisk.Play();
+                WinFormsUtil.Asterisk();
             else
                 WinFormsUtil.Alert(msg);
         }
@@ -307,7 +339,7 @@ public partial class SAV_DLC5 : Form
 
         if (sfd.ShowDialog() != DialogResult.OK)
             return;
-        File.WriteAllBytes(sfd.FileName, bg.Data.ToArray());
+        File.WriteAllBytes(sfd.FileName, bg.Data);
     }
 
     private void B_Save_Click(object sender, EventArgs e)
@@ -342,7 +374,7 @@ public partial class SAV_DLC5 : Form
         var name = pwt.Name;
         if (string.IsNullOrWhiteSpace(name))
             name = "Empty";
-        ExportFile(WorldTournament5.Extension, PWTFileName, data.ToArray(), name);
+        ExportFile(WorldTournament5.Extension, PWTFileName, data.Span, name);
     }
 
     private void B_MusicalImport_Click(object sender, EventArgs e)
@@ -355,13 +387,13 @@ public partial class SAV_DLC5 : Form
         var musical = new MusicalShow5(data);
         SAV.SetMusical(data);
         if (LastImportedFile is { } name)
-            SAV.Musical.MusicalName = musical.IsUninitialized ? "" : Path.GetFileNameWithoutExtension(name).Trim();
+            SAV.Musical.MusicalName = musical.IsUninitialized ? "" : GetImportedMusicalName(name);
     }
 
     private void B_MusicalExport_Click(object sender, EventArgs e)
     {
         var data = SAV.MusicalDownloadData;
-        ExportFile(MusicalShow5.Extension, SAV.Musical.MusicalName, data.ToArray());
+        ExportFile(MusicalShow5.Extension, SAV.Musical.MusicalName, data.Span);
     }
 
     private void B_BattleVideoImport_Click(object sender, EventArgs e)
@@ -385,7 +417,7 @@ public partial class SAV_DLC5 : Form
     {
         var index = LB_BattleVideo.SelectedIndex;
         var data = SAV.GetBattleVideo(index);
-        ExportFile(BattleVideo5.Extension, BattleVideoFileName, data.ToArray());
+        ExportFile(BattleVideo5.Extension, BattleVideoFileName, data.Span);
     }
 
     private void B_BattleVideoExportDecrypted_Click(object sender, EventArgs e)
@@ -396,7 +428,7 @@ public partial class SAV_DLC5 : Form
         bool actual = !bvid.IsUninitialized;
         if (actual)
             bvid.Decrypt();
-        ExportFile(BattleVideo5.Extension, BattleVideoFileName, data.ToArray());
+        ExportFile(BattleVideo5.Extension, BattleVideoFileName, data.Span);
         if (actual)
             bvid.Encrypt();
     }
@@ -417,7 +449,7 @@ public partial class SAV_DLC5 : Form
     {
         var b2w2 = (SAV5B2W2)SAV;
         var data = b2w2.GetPokestarMovie(LB_Pokestar.SelectedIndex);
-        ExportFile(PokestarMovie5.Extension, PokeStarMovieFileName, data.ToArray());
+        ExportFile(PokestarMovie5.Extension, PokeStarMovieFileName, data.Span);
     }
 
     private void LB_Pokestar_SelectedIndexChanged(object sender, EventArgs e) { }
@@ -439,13 +471,13 @@ public partial class SAV_DLC5 : Form
     }
 
     private void B_Memory1Export_Click(object sender, EventArgs e)
-        => ExportFile(MemoryLinkExtension, MemoryLinkFileName, SAV.Link1Data.ToArray());
+        => ExportFile(MemoryLinkExtension, MemoryLinkFileName, SAV.Link1Data.Span);
     private void B_Memory2Export_Click(object sender, EventArgs e)
-        => ExportFile(MemoryLinkExtension, MemoryLinkFileName, SAV.Link2Data.ToArray());
+        => ExportFile(MemoryLinkExtension, MemoryLinkFileName, SAV.Link2Data.Span);
     private void B_PokeDexSkinSave_Click(object sender, EventArgs e)
-        => ExportFile(PokeDexSkin5.Extension, PokeDexFileName, SAV.PokedexSkinData.ToArray());
+        => ExportFile(PokeDexSkin5.Extension, PokeDexFileName, SAV.PokedexSkinData.Span);
     private void B_BattleTestExport_Click(object sender, EventArgs e)
-        => ExportFile(BattleTest5.Extension, BattleTestFileName, SAV.BattleTest.ToArray());
+        => ExportFile(BattleTest5.Extension, BattleTestFileName, SAV.BattleTest.Span);
 
     private void B_PokeDexSkinLoad_Click(object sender, EventArgs e)
     {

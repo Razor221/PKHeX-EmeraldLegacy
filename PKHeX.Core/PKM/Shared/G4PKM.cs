@@ -9,8 +9,10 @@ namespace PKHeX.Core;
 public abstract class G4PKM : PKM, IHandlerUpdate,
     IRibbonSetEvent3, IRibbonSetEvent4, IRibbonSetUnique3, IRibbonSetUnique4, IRibbonSetCommon3, IRibbonSetCommon4, IRibbonSetRibbons, IContestStats, IGroundTile, IAppliedMarkings4
 {
-    protected G4PKM(byte[] data) : base(data) { }
+    protected G4PKM(Memory<byte> data) : base(data) { }
     protected G4PKM([ConstantExpected] int size) : base(size) { }
+    protected override void EncryptStored(Span<byte> stored) => PokeCrypto.Encrypt45(stored);
+    protected override void EncryptParty(Span<byte> party) => PokeCrypto.CryptArray(party, EncryptionConstant);
 
     // Maximums
     public sealed override ushort MaxMoveID => Legal.MaxMoveID_4;
@@ -36,11 +38,11 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
     public sealed override void RefreshChecksum() => Checksum = CalculateChecksum();
     public sealed override bool ChecksumValid => CalculateChecksum() == Checksum;
     public override bool Valid { get => Sanity == 0 && ChecksumValid; set { if (!value) return; Sanity = 0; RefreshChecksum(); } }
-    protected virtual ushort CalculateChecksum() => Checksums.Add16(Data.AsSpan()[8..PokeCrypto.SIZE_4STORED]);
+    protected virtual ushort CalculateChecksum() => Checksums.Add16(Data[8..PokeCrypto.SIZE_4STORED]);
 
     // Trash Bytes
-    public sealed override Span<byte> NicknameTrash => Data.AsSpan(0x48, 22);
-    public sealed override Span<byte> OriginalTrainerTrash => Data.AsSpan(0x68, 16);
+    public sealed override Span<byte> NicknameTrash => Data.Slice(0x48, 22);
+    public sealed override Span<byte> OriginalTrainerTrash => Data.Slice(0x68, 16);
     public override int TrashCharCountNickname => 11;
     public override int TrashCharCountTrainer => 8;
 
@@ -166,21 +168,19 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
     public abstract GroundTileType GroundTile { get; set; }
     public abstract byte BallDPPt { get; set; }
     public abstract byte BallHGSS { get; set; }
-    public abstract byte PokeathlonStat { get; set; }
+    public abstract sbyte WalkingMood { get; set; }
     public int MarkingCount => 6;
     public abstract byte MarkingValue { get; set; }
 
     public bool GetMarking(int index)
     {
-        if ((uint)index >= MarkingCount)
-            throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)MarkingCount);
         return ((MarkingValue >> index) & 1) != 0;
     }
 
     public void SetMarking(int index, bool value)
     {
-        if ((uint)index >= MarkingCount)
-            throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)MarkingCount);
         MarkingValue = (byte)((MarkingValue & ~(1 << index)) | ((value ? 1 : 0) << index));
     }
 
@@ -200,9 +200,9 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
     {
         get
         {
-            ushort hgssloc = EggLocationExtended;
-            if (hgssloc != 0)
-                return hgssloc;
+            ushort pthgss = EggLocationExtended;
+            if (pthgss != 0)
+                return pthgss;
             return EggLocationDP;
         }
         set
@@ -219,9 +219,9 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
             }
             else
             {
-                int pthgss = PtHGSS ? value : 0; // only set to PtHGSS loc if encountered in game
+                var pthgss = PtHGSS ? value : default; // only set to PtHGSS loc if encountered in game
                 EggLocationDP = value;
-                EggLocationExtended = (ushort)pthgss;
+                EggLocationExtended = pthgss;
             }
         }
     }
@@ -249,11 +249,27 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
             }
             else
             {
-                int pthgss = PtHGSS ? value : 0; // only set to PtHGSS loc if encountered in game
+                var shouldSet = ShouldSetMetLocationExtended();
+                var pthgss = shouldSet ? value : default; // only set to PtHGSS loc if encountered in game
                 MetLocationDP = value;
-                MetLocationExtended = (ushort)pthgss;
+                MetLocationExtended = pthgss;
             }
         }
+    }
+
+    private bool ShouldSetMetLocationExtended()
+    {
+        if (!Gen3)
+            return PtHGSS;
+
+        // If transferred from Gen3 into Pt or HG/SS via Pal Park, they set these values.
+        var hasValue = MetLocationExtended != 0 || BallHGSS != 0;
+        var wasDP = PossiblyPalParkDP;
+        if (wasDP && !hasValue)
+            return false; // Keep D/P.
+        if (PossiblyPalParkPt || PossiblyPalParkHGSS)
+            return hasValue || !wasDP;
+        return false; // Assume D/P.
     }
 
     public sealed override byte Ball
@@ -263,6 +279,7 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
         // However, this info is not set in event gift data!
         // Event gift data contains a pre-formatted PK4 template, which is slightly mutated.
         // No HG/SS ball values were used in these event gifts, and no HG/SS ball values are set (0).
+        // Pal Park transfers into HG/SS set this value as well.
 
         // To get the display ball (assume HG/SS +), return the higher of the two values.
         get => Math.Max(BallHGSS, BallDPPt);
@@ -274,12 +291,45 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
             BallDPPt = Clamp(value, Core.Ball.Cherish);
 
             // Only set the HG/SS value if it originated in HG/SS and was not an event.
-            if (!HGSS || FatefulEncounter)
-                BallHGSS = 0;
-            else
+            if (WasCreatedInHGSS && this is not BK4)
                 BallHGSS = Clamp(value, Core.Ball.Sport);
+            else
+                BallHGSS = 0;
         }
     }
+
+    private bool WasCreatedInHGSS
+    {
+        get
+        {
+            if (Gen3)
+                return PossiblyPalParkHGSS;
+
+            if (HGSS)
+            {
+                // Retain value if it was a transferred egg hatched outside HG/SS.
+                if (BallHGSS == 0 && WasTradedEgg && !EggHatchLocation4.IsValidMet4HGSS(MetLocationExtended))
+                    return false;
+                return !FatefulEncounter || EggLocation != 0; // Ranger Manaphy was the only egg ever distributed.
+            }
+            else // D/P/Pt
+            {
+                // Retain value if it was a transferred egg hatched in HG/SS.
+                if (BallHGSS != 0 && WasTradedEgg && EggHatchLocation4.IsValidMet4HGSS(MetLocationExtended))
+                    return true;
+                return false;
+            }
+        }
+    }
+
+    // Must only be used for Gen3 origin Pokémon that could have been transferred via Pal Park.
+    public bool PossiblyPalParkDP => MetLocationExtended == 0 && IsTrashPalParkDP();
+    public bool PossiblyPalParkPt => MetLocationExtended != 0 && IsTrashPalParkPt();
+    public bool PossiblyPalParkHGSS => MetLocationExtended != 0 && IsTrashPalParkHGSS();
+
+    private bool IsTrashPalParkDP() => true; // todo
+    private bool IsTrashPalParkPt() => true; // todo
+    private bool IsTrashPalParkHGSS() => true; // todo
 
     // Synthetic Trading Logic
     public bool BelongsTo(ITrainerInfo tr)
@@ -311,12 +361,16 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
     }
 
     // Enforce D/P content only (no Pt or HG/SS)
-    protected void StripPtHGSSContent(PKM pk)
+    protected void StripPtHGSSContent<T>(T pk) where T : G4PKM
     {
         if (Form != 0 && !PersonalTable.DP[Species].HasForms && Species != 201)
             pk.Form = 0;
         if (HeldItem > Legal.MaxItemID_4_DP)
             pk.HeldItem = 0;
+
+        // pk.MetLocationExtended = 0;
+        // pk.EggLocationExtended = 0;
+        pk.BallHGSS = 0;
     }
 
     protected T ConvertTo<T>() where T : G4PKM, new()
@@ -378,16 +432,18 @@ public abstract class G4PKM : PKM, IHandlerUpdate,
             BallDPPt = BallDPPt,
             BallHGSS = BallHGSS,
             GroundTile = GroundTile,
-            PokeathlonStat = PokeathlonStat,
+            WalkingMood = WalkingMood,
             FatefulEncounter = FatefulEncounter,
 
             MetLevel = MetLevel,
-            MetLocation = MetLocation,
+            MetLocationDP = MetLocationDP,
+            MetLocationExtended = MetLocationExtended,
             MetYear = MetYear,
             MetMonth = MetMonth,
             MetDay = MetDay,
 
-            EggLocation = EggLocation,
+            EggLocationDP = EggLocationDP,
+            EggLocationExtended = EggLocationExtended,
             EggYear = EggYear,
             EggMonth = EggMonth,
             EggDay = EggDay,

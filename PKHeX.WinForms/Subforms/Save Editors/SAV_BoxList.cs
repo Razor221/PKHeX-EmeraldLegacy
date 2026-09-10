@@ -28,13 +28,13 @@ public sealed partial class SAV_BoxList : Form
         CenterToParent();
         Owner = p.ParentForm;
         foreach (var b in Boxes)
-            m.Env.Slots.Publisher.Subscribers.Add(b);
+            m.Env.Slots.Publisher.Subscribe(b);
         FormClosing += (_, _) =>
         {
             foreach (var b in Boxes)
             {
                 b.M?.Boxes.Remove(b);
-                m.Env.Slots.Publisher.Subscribers.Remove(b);
+                m.Env.Slots.Publisher.Unsubscribe(b);
             }
         };
     }
@@ -46,7 +46,7 @@ public sealed partial class SAV_BoxList : Form
         DragDrop += (_, _) =>
         {
             Cursor = DefaultCursor;
-            System.Media.SystemSounds.Asterisk.Play();
+            WinFormsUtil.Asterisk();
         };
     }
 
@@ -59,11 +59,12 @@ public sealed partial class SAV_BoxList : Form
                 Name = $"BE_Box{i:00}",
                 Margin = new Padding(1),
                 Editor = new BoxEdit(sav),
+                Parent = this,
             };
             boxEditor.Setup(m);
             boxEditor.InitializeGrid();
             boxEditor.Reset();
-            foreach (PictureBox pb in boxEditor.SlotPictureBoxes)
+            foreach (var pb in boxEditor.SlotPictureBoxes)
                 pb.ContextMenuStrip = p.SlotPictureBoxes[0].ContextMenuStrip;
             boxEditor.CurrentBox = i;
             boxEditor.CB_BoxSelect.Enabled = false;
@@ -77,13 +78,13 @@ public sealed partial class SAV_BoxList : Form
             box.ClearEvents();
             box.B_BoxLeft.Click += (_, _) =>
             {
-                int index = Array.IndexOf(Boxes, box);
+                int index = Boxes.IndexOf(box);
                 int other = (index + Boxes.Length - 1) % Boxes.Length;
                 m.SwapBoxes(index, other, p.SAV);
             };
             box.B_BoxRight.Click += (_, _) =>
             {
-                int index = Array.IndexOf(Boxes, box);
+                int index = Boxes.IndexOf(box);
                 int other = (index + 1) % Boxes.Length;
                 m.SwapBoxes(index, other, p.SAV);
             };
@@ -112,7 +113,7 @@ public sealed partial class SAV_BoxList : Form
             return;
         if (e.AllowedEffect == (DragDropEffects.Copy | DragDropEffects.Link)) // external file
             e.Effect = DragDropEffects.Copy;
-        else if (e.Data != null) // within
+        else if (e.Data is not null) // within
             e.Effect = DragDropEffects.Move;
     }
 }

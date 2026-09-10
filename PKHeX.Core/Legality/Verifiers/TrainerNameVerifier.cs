@@ -1,5 +1,5 @@
 using System;
-using static PKHeX.Core.LegalityCheckStrings;
+using static PKHeX.Core.LegalityCheckResultCode;
 
 namespace PKHeX.Core;
 
@@ -19,7 +19,7 @@ public sealed class TrainerNameVerifier : Verifier
     public override void Verify(LegalityAnalysis data)
     {
         var pk = data.Entity;
-        var enc = data.EncounterMatch;
+        var enc = data.EncounterOriginal;
         if (!IsPlayerOriginalTrainer(enc))
             return; // already verified
 
@@ -27,53 +27,57 @@ public sealed class TrainerNameVerifier : Verifier
         int len = pk.LoadString(pk.OriginalTrainerTrash, trainer);
         if (len == 0)
         {
-            data.AddLine(GetInvalid(LOTShort));
+            data.AddLine(GetInvalid(OTShort));
             return;
         }
         trainer = trainer[..len];
         if (trainer.Contains('\uffff') && pk is { Format: 4 })
         {
-            data.AddLine(GetInvalid("Trainer Name: Unkown Character"));
+            data.AddLine(GetInvalid(CheckIdentifier.Trainer, WordFilterInvalidCharacter_0, 0xFFFF));
             return;
         }
 
         if (IsOTNameSuspicious(trainer))
         {
-            data.AddLine(Get(LOTSuspicious, Severity.Fishy));
+            data.AddLine(Get(Severity.Fishy, OTSuspicious));
         }
 
         if (pk.VC)
         {
             VerifyOTGB(data);
         }
-        else if (trainer.Length > Legal.GetMaxLengthOT(data.Info.Generation, (LanguageID)pk.Language))
+        else if (trainer.Length > Legal.GetMaxLengthOT(enc.Generation, (LanguageID)pk.Language))
         {
-            if (!IsEdgeCaseLength(pk, data.EncounterOriginal, trainer))
-                data.AddLine(Get(LOTLong, Severity.Invalid));
+            if (!IsEdgeCaseLength(pk, enc, trainer) && !data.HasResult(GTSTrainerSanitized))
+                data.AddLine(Get(Severity.Invalid, OTLong));
         }
 
         if (ParseSettings.Settings.WordFilter.IsEnabled(pk.Format))
         {
-            if (WordFilter.IsFiltered(trainer, out var badPattern))
-                data.AddLine(GetInvalid($"Word Filter: {badPattern}"));
-            if (ContainsTooManyNumbers(trainer, data.Info.Generation))
-                data.AddLine(GetInvalid("Word Filter: Too many numbers."));
+            // Check original trainer
+            if (WordFilter.IsFiltered(trainer, pk.Context, enc.Context, out var type, out var badPattern))
+                data.AddLine(GetInvalid(CheckIdentifier.Trainer, WordFilterFlaggedPattern_01, (ushort)type, (ushort)badPattern));
+            if (ContainsTooManyNumbers(trainer, enc.Generation))
+                data.AddLine(GetInvalid(CheckIdentifier.Trainer, WordFilterTooManyNumbers_0, (ushort)GetMaxNumberCount(enc.Generation)));
 
-            Span<char> ht = stackalloc char[pk.TrashCharCountTrainer];
+            // Check handling trainer
+            Span<char> ht = stackalloc char[pk.TrashCharCountHandler];
             int nameLen = pk.LoadString(pk.HandlingTrainerTrash, ht);
-            if (WordFilter.IsFiltered(ht[..nameLen], out badPattern))
-                data.AddLine(GetInvalid($"Word Filter: {badPattern}"));
+            if (WordFilter.IsFiltered(ht[..nameLen], pk.Context, out type, out badPattern)) // HT context is always the current context
+                data.AddLine(GetInvalid(CheckIdentifier.Handler, WordFilterFlaggedPattern_01, (ushort)type, (ushort)badPattern));
+            if (ContainsTooManyNumbers(ht, pk.Format))
+                data.AddLine(GetInvalid(CheckIdentifier.Handler, WordFilterTooManyNumbers_0, (ushort)GetMaxNumberCount(pk.Format)));
         }
     }
 
     /// <summary>
     /// Checks if any player (human) was the original OT.
     /// </summary>
-    internal static bool IsPlayerOriginalTrainer(IEncounterable enc) => enc switch
+    internal static bool IsPlayerOriginalTrainer(IEncounterTemplate enc) => enc switch
     {
         IFixedTrainer { IsFixedTrainer: true } => false,
         MysteryGift { IsEgg: false } => false,
-        EncounterStatic5N => false,
+        ITrainerID16ReadOnly => false,
         _ => true,
     };
 
@@ -104,7 +108,7 @@ public sealed class TrainerNameVerifier : Verifier
             // Transferring from RBY->Gen7 won't have OT Gender in PK1, nor will PK1 originated encounters.
             // GSC Trades already checked for OT Gender matching.
             if (pk is { Format: > 2, VC1: true } || enc is { Generation: 1 } or EncounterGift2 { IsEgg: false })
-                data.AddLine(GetInvalid(LG1OTGender));
+                data.AddLine(GetInvalid(G1OTGender));
         }
 
         if (enc is IFixedTrainer { IsFixedTrainer: true })
@@ -118,11 +122,11 @@ public sealed class TrainerNameVerifier : Verifier
         {
             if (pk is SK2 {TID16: 0, IsRental: true})
             {
-                data.AddLine(Get(LOTShort, Severity.Fishy));
+                data.AddLine(Get(Severity.Fishy, OTShort));
             }
             else
             {
-                data.AddLine(GetInvalid(LOTShort));
+                data.AddLine(GetInvalid(OTShort));
                 return;
             }
         }
@@ -145,23 +149,23 @@ public sealed class TrainerNameVerifier : Verifier
         if (pk.Japanese)
         {
             if (str.Length > 5)
-                data.AddLine(GetInvalid(LOTLong));
-            if (!StringConverter1.GetIsJapanese(str))
-                data.AddLine(GetInvalid(LG1CharOT));
+                data.AddLine(GetInvalid(OTLong, 5));
+            if (data.EncounterOriginal.Generation == 1 ? !StringConverter1.GetIsJapanese(str) : !StringConverter2.GetIsJapanese(str))
+                data.AddLine(GetInvalid(G1CharOT));
         }
         else if (pk.Korean)
         {
             if (str.Length > 5)
-                data.AddLine(GetInvalid(LOTLong));
+                data.AddLine(GetInvalid(OTLong, 5));
             if (!StringConverter2KOR.GetIsKorean(str))
-                data.AddLine(GetInvalid(LG1CharOT));
+                data.AddLine(GetInvalid(G1CharOT));
         }
         else
         {
             if (str.Length > 7)
-                data.AddLine(GetInvalid(LOTLong));
+                data.AddLine(GetInvalid(OTLong, 7));
             if (!StringConverter1.GetIsEnglish(str))
-                data.AddLine(GetInvalid(LG1CharOT));
+                data.AddLine(GetInvalid(G1CharOT));
         }
     }
 
@@ -175,30 +179,25 @@ public sealed class TrainerNameVerifier : Verifier
         return false;
     }
 
-    public static bool ContainsTooManyNumbers(ReadOnlySpan<char> str, int originalGeneration)
+    public static bool ContainsTooManyNumbers(ReadOnlySpan<char> str, byte originalGeneration)
     {
         if (originalGeneration <= 3)
             return false; // no limit from these generations
-        int max = originalGeneration < 6 ? 4 : 5;
+        int max = GetMaxNumberCount(originalGeneration);
         if (str.Length <= max)
             return false;
         int count = GetNumberCount(str);
         return count > max;
     }
 
+    public static int GetMaxNumberCount(byte originalGeneration) => originalGeneration < 6 ? 4 : 5;
+
     private static int GetNumberCount(ReadOnlySpan<char> str)
     {
-        static bool IsNumber(char c)
-        {
-            if (c >= '０')
-                return c <= '９';
-            return (uint)(c - '0') <= 9;
-        }
-
         int ctr = 0;
         foreach (var c in str)
         {
-            if (IsNumber(c))
+            if (char.IsNumber(c))
                 ++ctr;
         }
         return ctr;

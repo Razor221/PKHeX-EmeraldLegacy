@@ -8,7 +8,7 @@ namespace PKHeX.Core;
 /// Stores data about the player.
 /// </summary>
 [TypeConverter(typeof(ExpandableObjectConverter))]
-public sealed class MyStatus8a(SAV8LA sav, SCBlock block) : SaveBlock<SAV8LA>(sav, block.Data)
+public sealed class MyStatus8a(SAV8LA sav, SCBlock block) : SaveBlock<SAV8LA>(sav, block.Raw)
 {
     public uint ID32
     {
@@ -57,7 +57,7 @@ public sealed class MyStatus8a(SAV8LA sav, SCBlock block) : SaveBlock<SAV8LA>(sa
         }
     }
 
-    private Span<byte> OriginalTrainerTrash => Data.Slice(0x20, 0x1A);
+    public Span<byte> OriginalTrainerTrash => Data.Slice(0x20, 0x1A);
 
     public string OT
     {

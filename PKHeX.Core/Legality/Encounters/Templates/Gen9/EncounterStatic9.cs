@@ -68,12 +68,12 @@ public sealed record EncounterStatic9(GameVersion Version)
     public PK9 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PK9 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
         var pi = PersonalTable.SV[Species, Form];
         var pk = new PK9
         {
-            Language = lang,
+            Language = language,
             Species = Species,
             Form = Form,
             CurrentLevel = LevelMin,
@@ -85,7 +85,7 @@ public sealed record EncounterStatic9(GameVersion Version)
             Ball = (byte)Ball.Poke,
             FatefulEncounter = FatefulEncounter,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             ObedienceLevel = LevelMin,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
@@ -126,7 +126,7 @@ public sealed record EncounterStatic9(GameVersion Version)
         return pk;
     }
 
-    private void SetPINGA(PK9 pk, EncounterCriteria criteria, PersonalInfo9SV pi)
+    private void SetPINGA(PK9 pk, in EncounterCriteria criteria, PersonalInfo9SV pi)
     {
         const byte undefinedSize = 0;
         byte height, weight, scale;
@@ -146,23 +146,16 @@ public sealed record EncounterStatic9(GameVersion Version)
             Ability, Shiny);
 
         ulong init = Util.Rand.Rand64();
-        var success = this.TryApply64(pk, init, param, criteria, IVs.IsSpecified);
-        if (!success)
-            this.TryApply64(pk, init, param, EncounterCriteria.Unrestricted, IVs.IsSpecified);
+        var success = this.TryApply64(pk, init, param, criteria);
+        if (!success && !this.TryApply64(pk, init, param, criteria.WithoutIVs()))
+            this.TryApply64(pk, init, param, EncounterCriteria.Unrestricted);
         if (IVs.IsSpecified)
-        {
-            pk.IV_HP = IVs.HP;
-            pk.IV_ATK = IVs.ATK;
-            pk.IV_DEF = IVs.DEF;
-            pk.IV_SPA = IVs.SPA;
-            pk.IV_SPD = IVs.SPD;
-            pk.IV_SPE = IVs.SPE;
-        }
+            pk.IV32 = IVs.GetIV32();
 
         if (Gender != FixedGenderUtil.GenderRandom)
             pk.Gender = Gender;
-        if (Nature != Nature.Random)
-            pk.Nature = pk.StatNature = Nature;
+        if (Nature.IsFixed)
+            pk.Nature = pk.StatAlignment = Nature;
     }
     #endregion
 
@@ -173,7 +166,7 @@ public sealed record EncounterStatic9(GameVersion Version)
             return false;
         if (Gender != FixedGenderUtil.GenderRandom && pk.Gender != Gender)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!IsMatchEggLocationInternal(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -185,30 +178,25 @@ public sealed record EncounterStatic9(GameVersion Version)
             return false;
         if (TeraType != GemType.Random && pk is ITeraType t && !Tera9RNG.IsMatchTeraType(TeraType, Species, Form, (byte)t.TeraTypeOriginal))
             return false;
-        if (Nature != Nature.Random && pk.Nature != Nature)
+        if (Nature.IsFixed && pk.Nature != Nature)
             return false;
 
         return true;
     }
 
-    private bool IsMatchEggLocation(PKM pk)
+    private bool IsMatchEggLocationInternal(PKM pk)
     {
-        var eggLoc = pk.EggLocation;
         if (!IsEgg)
-        {
-            var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-            return eggLoc == expect;
-        }
+            return this.IsMatchEggLocation(pk);
 
-        if (!pk.IsEgg) // hatched
-            return eggLoc == EggLocation || eggLoc == Locations.LinkTrade6;
+        var eggLoc = pk.EggLocation;
+        var metState = LocationsHOME.GetRemapState(Context, pk.Context);
+        if (metState == LocationRemapState.Remapped)
+            return pk.EggLocation == 0;
 
-        // Unhatched:
-        if (eggLoc != EggLocation)
-            return false;
-        if (pk.MetLocation is not (0 or Locations.LinkTrade6))
-            return false;
-        return true;
+        if (!IsEgg)
+            return this.IsMatchEggLocation(pk);
+        return eggLoc == EggLocation || (!pk.IsEgg && eggLoc == Locations.LinkTrade6);
     }
 
     private bool IsMatchLocation(PKM pk)
@@ -230,9 +218,12 @@ public sealed record EncounterStatic9(GameVersion Version)
 
     private bool IsMatchLocationExact(PKM pk)
     {
-        if (IsEgg)
+        var met = pk.MetLocation;
+        if (met == Location)
             return true;
-        return pk.MetLocation == Location;
+        if (IsEgg)
+            return !pk.IsEgg || met == Locations.LinkTrade6;
+        return false;
     }
 
     private bool IsMatchLocationRemapped(PKM pk)

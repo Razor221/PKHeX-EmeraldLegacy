@@ -14,7 +14,7 @@ public sealed class MyStatus8b(SAV8BS sav, Memory<byte> raw) : SaveBlock<SAV8BS>
     public const byte MAX_BADGE = 8;
     // public const byte MAX_RANK = 5; // unused?
 
-    private Span<byte> OriginalTrainerTrash => Data[..0x1A];
+    public Span<byte> OriginalTrainerTrash => Data[..0x1A];
 
     public string OT
     {
@@ -76,19 +76,19 @@ public sealed class MyStatus8b(SAV8BS sav, Memory<byte> raw) : SaveBlock<SAV8BS>
 
     // end structure!
 
-    public GameVersion Game
+    public GameVersion Version
     {
         get => ROMCode switch
         {
             0 => GameVersion.BD,
             1 => GameVersion.SP,
-            _ => throw new ArgumentOutOfRangeException(nameof(Game)),
+            _ => throw new ArgumentOutOfRangeException(nameof(Version)),
         };
         set => ROMCode = value switch
         {
             GameVersion.BD => 0,
             GameVersion.SP => 1,
-            _ => throw new ArgumentOutOfRangeException(nameof(Game)),
+            _ => throw new ArgumentOutOfRangeException(nameof(Version)),
         };
     }
 

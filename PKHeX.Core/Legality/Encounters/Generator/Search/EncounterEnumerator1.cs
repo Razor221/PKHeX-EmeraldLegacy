@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Iterates to find potentially matched encounters for <see cref="GameVersion.Gen1"/>.
+/// Iterates to find potentially matched encounters for <see cref="EntityContext.Gen1"/>.
 /// </summary>
 public record struct EncounterEnumerator1(PKM Entity, EvoCriteria[] Chain) : IEnumerator<MatchedEncounter<IEncounterable>>
 {
@@ -134,7 +134,7 @@ public record struct EncounterEnumerator1(PKM Entity, EvoCriteria[] Chain) : IEn
 
             case YieldState.Fallback:
                 State = YieldState.End;
-                if (Deferred != null)
+                if (Deferred is not null)
                     return SetCurrent(Deferred, Rating);
                 break;
         }

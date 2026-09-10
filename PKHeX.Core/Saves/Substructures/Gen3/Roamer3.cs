@@ -3,24 +3,13 @@ using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
 
-public sealed class Roamer3 : IContestStats
+public sealed record Roamer3(Memory<byte> Raw, bool IsGlitched) : IContestStats
 {
-    public const int SIZE = 0x14;
-    public bool IsGlitched { get; }
-    private readonly Memory<byte> Raw;
+    public const int SIZE = 0x14; // +8 bytes of unused
     private Span<byte> Data => Raw.Span;
 
-    public Roamer3(SAV3 sav)
+    public Roamer3(ISaveBlock3Large large) : this(large.RoamerData, large is not SaveBlock3LargeE)
     {
-        var buffer = sav.Large;
-        var offset = sav switch
-        {
-            SAV3RS => 0x3144,
-            SAV3E => 0x31DC,
-            _ => 0x30D0, // FRLG
-        };
-        Raw = buffer.AsMemory(offset, SIZE);
-        IsGlitched = sav is not SAV3E;
     }
 
     public uint IV32
@@ -41,10 +30,10 @@ public sealed class Roamer3 : IContestStats
         set => WriteUInt16LittleEndian(Data[8..], SpeciesConverter.GetInternal3(value));
     }
 
-    public int HP_Current
+    public ushort HP_Current
     {
-        get => ReadInt16LittleEndian(Data[10..]);
-        set => WriteInt16LittleEndian(Data[10..], (short)value);
+        get => ReadUInt16LittleEndian(Data[10..]);
+        set => WriteUInt16LittleEndian(Data[10..], value);
     }
 
     public byte CurrentLevel
@@ -53,7 +42,7 @@ public sealed class Roamer3 : IContestStats
         set => Data[12] = value;
     }
 
-    public int Status { get => Data[0x0D]; set => Data[0x0D] = (byte)value; }
+    public byte Status { get => Data[0x0D]; set => Data[0x0D] = value; }
 
     public byte ContestCool   { get => Data[0x0E]; set => Data[0x0E] = value; }
     public byte ContestBeauty { get => Data[0x0F]; set => Data[0x0F] = value; }
@@ -61,7 +50,7 @@ public sealed class Roamer3 : IContestStats
     public byte ContestSmart  { get => Data[0x11]; set => Data[0x11] = value; }
     public byte ContestTough  { get => Data[0x12]; set => Data[0x12] = value; }
     public byte ContestSheen  { get => 0; set { } }
-    public bool Active    { get => Data[0x13] == 1; set => Data[0x13] = value ? (byte)1 : (byte)0; }
+    public bool IsActive      { get => Data[0x13] == 1; set => Data[0x13] = value ? (byte)1 : (byte)0; }
 
     // Derived Properties
     public int IV_HP  { get => (int)(IV32 >> 00) & 0x1F; set => IV32 = (IV32 & ~(0x1Fu << 00)) | (uint)((value > 31 ? 31 : value) << 00); }

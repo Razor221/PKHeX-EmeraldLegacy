@@ -11,15 +11,17 @@ namespace PKHeX.Core;
 public sealed class SAV5B2W2 : SAV5, ISaveBlock5B2W2
 {
     public SAV5B2W2() : base(SaveUtil.SIZE_G5RAW) => Blocks = new SaveBlockAccessor5B2W2(this);
-    public SAV5B2W2(byte[] data) : base(data) => Blocks = new SaveBlockAccessor5B2W2(this);
+    public SAV5B2W2(Memory<byte> data) : base(data) => Blocks = new SaveBlockAccessor5B2W2(this);
 
     public override PersonalTable5B2W2 Personal => PersonalTable.B2W2;
     public SaveBlockAccessor5B2W2 Blocks { get; }
-    protected override SAV5B2W2 CloneInternal() => new((byte[]) Data.Clone());
+    protected override SAV5B2W2 CloneInternal() => new(Data.ToArray());
     public override int MaxItemID => Legal.MaxItemID_5_B2W2;
 
+    public override PlayerBag5B2W2 Inventory => new(this);
+
     public override IReadOnlyList<BlockInfo> AllBlocks => Blocks.BlockInfo;
-    public override MyItem Items => Blocks.Items;
+    public override MyItem5B2W2 Items => Blocks.Items;
     public override Zukan5 Zukan => Blocks.Zukan;
     public override Misc5 Misc => Blocks.Misc;
     public override MysteryBlock5 Mystery => Blocks.Mystery;
@@ -46,19 +48,20 @@ public sealed class SAV5B2W2 : SAV5, ISaveBlock5B2W2
 
     public FestaBlock5 Festa => Blocks.Festa;
     public PWTBlock5 PWT => Blocks.PWT;
+    public JoinAvenue5 JoinAvenue => Blocks.JoinAvenue;
     public MedalList5 Medals => Blocks.Medals;
     public KeySystem5 Keys => Blocks.Keys;
 
-    public string Rival
+    public string RivalName
     {
-        get => GetString(RivalTrash);
-        set => SetString(RivalTrash, value, MaxStringLengthTrainer, StringConverterOption.ClearZero);
+        get => GetString(RivalNameTrash);
+        set => SetString(RivalNameTrash, value, MaxStringLengthTrainer, StringConverterOption.ClearZero);
     }
 
-    public Span<byte> RivalTrash
+    public Span<byte> RivalNameTrash
     {
-        get => Data.AsSpan(0x23BA4, MaxStringLengthTrainer * 2);
-        set { if (value.Length == MaxStringLengthTrainer * 2) value.CopyTo(Data.AsSpan(0x23BA4)); }
+        get => Data.Slice(0x23BA4, MaxStringLengthTrainer * 2);
+        set { if (value.Length == MaxStringLengthTrainer * 2) value.CopyTo(Data[0x23BA4..]); }
     }
 
     protected override int ExtBattleVideoNativeOffset    => 0x4C000; // 0x1A00
@@ -92,13 +95,13 @@ public sealed class SAV5B2W2 : SAV5, ISaveBlock5B2W2
 
     public Memory<byte> GetPokestarMovie([Range(0, PokestarCount)] int index)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PokestarCount, nameof(index));
-        return Data.AsMemory(GetPokestarOffset(index), PokestarLength);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PokestarCount);
+        return Buffer.Slice(GetPokestarOffset(index), PokestarLength);
     }
 
     public void SetPokestarMovie([Range(0, PokestarCount)] int index, ReadOnlySpan<byte> data, ushort count = 1)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PokestarCount, nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PokestarCount);
         var offset = GetPokestarOffset(index);
         WriteExtSection(data, offset, PokestarLength, count);
         PlayerData.UpdateExtData(ExtDataSectionNote5.Movie1 + index, count);
@@ -111,19 +114,19 @@ public sealed class SAV5B2W2 : SAV5, ISaveBlock5B2W2
 
     public Memory<byte> GetPWT([Range(0, PWTCount)] int index)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PWTCount, nameof(index));
-        return Data.AsMemory(PWTOffset + (index * PWTInterval), PWTLength);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PWTCount);
+        return Buffer.Slice(PWTOffset + (index * PWTInterval), PWTLength);
     }
 
     public void SetPWT([Range(0, PWTCount)] int index, ReadOnlySpan<byte> data, ushort count = 1)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PWTCount, nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, PWTCount);
         var offset = GetPWTOffset(index);
         WriteExtSection(data, offset, PWTLength, count);
         PlayerData.UpdateExtData(ExtDataSectionNote5.PWT1 + index, count);
     }
 
-    public Memory<byte> GetKeyData() => Data.AsMemory(KeyDataOffset, 0xC8);
+    public Memory<byte> GetKeyData() => Buffer.Slice(KeyDataOffset, 0xC8);
 
     public void SetKeyData(ReadOnlySpan<byte> data, ushort count = 1)
     {

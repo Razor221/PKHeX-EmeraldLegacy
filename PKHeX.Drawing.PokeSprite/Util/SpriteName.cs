@@ -5,8 +5,14 @@ using static PKHeX.Core.Species;
 
 namespace PKHeX.Drawing.PokeSprite;
 
+/// <summary>
+/// Logic for retrieving the resource names of Pokémon and related sprites.
+/// </summary>
 public static class SpriteName
 {
+    /// <summary>
+    /// Allows returning a Shiny sprite when available.
+    /// </summary>
     public static bool AllowShinySprite { get; set; }
 
     private const char Separator = '_';
@@ -22,10 +28,15 @@ public static class SpriteName
     /// <summary>
     /// Gets the resource name of the Pokémon sprite.
     /// </summary>
-    public static string GetResourceStringSprite(ushort species, byte form, byte gender, uint formarg, EntityContext context = PKX.Context, bool shiny = false)
+    public static string GetResourceStringSprite(ushort species, byte form, byte gender, uint formarg, EntityContext context = Latest.Context, bool shiny = false)
     {
         if (SpeciesDefaultFormSprite.Contains(species)) // Species who show their default sprite regardless of Form
             form = 0;
+
+        // Starting in Legends: Z-A, Xerneas no longer has two forms, and it transitions to what was then-considered Active Mode when it attacks
+        // The in-game icon always displays it as active, so match that behavior here
+        if (species == (ushort)Xerneas && context == EntityContext.Gen9a)
+            form = 1;
 
         var sb = new StringBuilder(12); // longest expected string result
         sb.Append(Separator).Append(species);
@@ -39,7 +50,6 @@ public static class SpriteName
                 if (context == EntityContext.Gen6)
                 {
                     sb.Append(Cosplay);
-                    gender = 1; // Cosplay Pikachu gift can only be Female, but personal entries are set to be either Gender
                 }
                 else if (form == 8)
                 {
@@ -92,7 +102,6 @@ public static class SpriteName
     /// </summary>
     private static ReadOnlySpan<ushort> SpeciesGenderedSprite =>
     [
-        (ushort)Pikachu,
         (ushort)Hippopotas,
         (ushort)Hippowdon,
         (ushort)Unfezant,

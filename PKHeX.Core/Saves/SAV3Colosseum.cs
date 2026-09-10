@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -7,16 +6,23 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 3 <see cref="SaveFile"/> object for Pokémon Colosseum saves.
 /// </summary>
-public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDaycareStorage, IDaycareExperience
+public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDaycareStorage, IDaycareExperience, IGCRegion, ISaveFileRevision
 {
     protected internal override string ShortSummary => $"{OT} ({Version}) - {PlayTimeString}";
     public override string Extension => this.GCExtension();
     public override PersonalTable3 Personal => PersonalTable.RS;
     public override ReadOnlySpan<ushort> HeldItems => Legal.HeldItems_RS;
     public SAV3GCMemoryCard? MemoryCard { get; init; }
+    public int SaveRevision => 0;
+    public string SaveRevisionString => OriginalRegion switch
+    {
+        GCRegion.NTSC_J => "-J",
+        GCRegion.NTSC_U => "-U",
+        GCRegion.PAL => "-PAL",
+        _ => "-?",
+    };
 
-    private readonly Memory<byte> Raw;
-    private new Span<byte> Data => Raw.Span;
+    private readonly Memory<byte> Container;
     protected override Span<byte> BoxBuffer => Data;
     protected override Span<byte> PartyBuffer => Data;
 
@@ -27,6 +33,10 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
     // Checksum is SHA1 over 0-0x1DFD7, stored in the last 20 bytes of the save slot.
     // Another SHA1 hash is 0x1DFD8, for 20 bytes. Unknown purpose.
     // Checksum is used as the crypto key.
+
+    // For managing our save file, our Data will be the "active" save slot.
+    // If we can detect which slot is most recent, we will use that one.
+    // For blank saves, just allocate a new slot.
 
     private readonly int SaveCount = -1;
     private readonly int SaveIndex = -1;
@@ -40,20 +50,24 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
     public SAV3Colosseum(bool japanese = false)
     {
         Japanese = japanese;
-
-        Raw = new byte[ColoCrypto.SLOT_SIZE];
+        Container = default;
         CurrentRegion = OriginalRegion = japanese ? GCRegion.NTSC_J : GCRegion.NTSC_U;
         StrategyMemo = Initialize();
         ClearBoxes();
     }
 
-    public SAV3Colosseum(byte[] data) : base(data)
+    public SAV3Colosseum(Memory<byte> data, bool decrypt = true) : this(ColoCrypto.DetectLatest(data.Span), data, decrypt) { }
+    private SAV3Colosseum((int Index, int Count) latest, Memory<byte> data, bool decrypt = true) : base(ColoCrypto.GetSlot(data, latest.Index))
     {
-        Japanese = data[0] == 0x83; // Japanese game name first character
+        if (decrypt)
+            ColoCrypto.Decrypt(Data);
+        (SaveIndex, SaveCount) = latest;
+
+        Container = data;
+        var span = data.Span;
+        Japanese = span[0] == 0x83; // Japanese game name first character
 
         // Decrypt most recent save slot
-        (SaveIndex, SaveCount) = ColoCrypto.DetectLatest(data);
-        Raw = ColoCrypto.GetSlot(data.AsMemory(), SaveIndex);
         StrategyMemo = Initialize();
     }
 
@@ -72,15 +86,15 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
         {
             var ofs = GetPartyOffset(i);
             var span = Data[ofs..];
-            if (ReadUInt16BigEndian(span) != 0) // species is at offset 0x00
+            if (IsPKMPresent(span))
                 PartyCount++;
         }
 
-        var memo = new StrategyMemo(Data[Memo..], xd: false);
+        var memo = new StrategyMemo(Buffer[Memo..], xd: false);
         return memo;
     }
 
-    protected override byte[] GetFinalData()
+    protected override Memory<byte> GetFinalData()
     {
         var newFile = GetInnerData();
 
@@ -98,17 +112,17 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
         SetChecksums();
 
         // Put save slot back in original save data
-        byte[] newFile = (byte[])base.Data.Clone();
-        ColoCrypto.SetSlot(newFile, SaveIndex, Data);
-
-        return newFile;
+        var result = Container.ToArray();
+        var region = ColoCrypto.GetSlot(result, SaveIndex);
+        ColoCrypto.Encrypt(region.Span);
+        return result;
     }
 
     // Configuration
-    protected override SAV3Colosseum CloneInternal() => new(GetInnerData()) { MemoryCard = MemoryCard };
+    protected override SAV3Colosseum CloneInternal() => new((SaveIndex, SaveCount), Container.ToArray(), false) { MemoryCard = MemoryCard };
 
-    protected override int SIZE_STORED => PokeCrypto.SIZE_3CSTORED;
-    protected override int SIZE_PARTY => PokeCrypto.SIZE_3CSTORED; // unused
+    public override int SIZE_STORED => PokeCrypto.SIZE_3CSTORED;
+    public override int SIZE_PARTY => PokeCrypto.SIZE_3CSTORED; // unused
     public override CK3 BlankPKM => new();
     public override Type PKMType => typeof(CK3);
 
@@ -168,14 +182,22 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
         SetString(GetBoxNameSpan(box), value, 8, StringConverterOption.ClearZero);
     }
 
-    protected override CK3 GetPKM(byte[] data)
+    protected override CK3 GetPKM(Memory<byte> data)
     {
-        if (data.Length != SIZE_STORED)
-            Array.Resize(ref data, SIZE_STORED);
+        data = EnsurePartySize(data);
         return new(data);
     }
 
-    protected override byte[] DecryptPKM(byte[] data) => data;
+    private static Memory<byte> EnsurePartySize(Memory<byte> data)
+    {
+        if (data.Length == PokeCrypto.SIZE_3CSTORED)
+            return data;
+        var result = new byte[PokeCrypto.SIZE_3CSTORED];
+        data.CopyTo(result);
+        return result;
+    }
+
+    protected override void DecryptPKM(Span<byte> data) { }
 
     protected override void SetPKM(PKM pk, bool isParty = false)
     {
@@ -250,7 +272,8 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
     }
 
     // Trainer Info (offset 0x78, length 0xB18, end @ 0xB90)
-    public override string OT { get => GetString(Data.Slice(0x78, 20)); set { SetString(Data.Slice(0x78, 20), value, 10, StringConverterOption.ClearZero); OT2 = value; } }
+    public Span<byte> OriginalTrainerTrash => Data.Slice(0x78, 20);
+    public override string OT { get => GetString(OriginalTrainerTrash); set { SetString(OriginalTrainerTrash, value, 10, StringConverterOption.ClearZero); OT2 = value; } }
     public string OT2 { get => GetString(Data.Slice(0x8C, 20)); set => SetString(Data.Slice(0x8C, 20), value, 10, StringConverterOption.ClearZero); }
 
     public override uint ID32 { get => ReadUInt32BigEndian(Data[0xA4..]); set => WriteUInt32BigEndian(Data[0xA4..], value); }
@@ -263,24 +286,7 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
     public uint CouponsTotal { get => ReadUInt32BigEndian(Data[0xB04..]); set => WriteUInt32BigEndian(Data[0xB04..], value); }
     public string RUI_Name { get => GetString(Data.Slice(0xB3A, 20)); set => SetString(Data.Slice(0xB3A, 20), value, 10, StringConverterOption.ClearZero); }
 
-    public override IReadOnlyList<InventoryPouch> Inventory
-    {
-        get
-        {
-            var info = ItemStorage3Colo.Instance;
-            InventoryPouch[] pouch =
-            [
-                new InventoryPouch3GC(InventoryType.Items, info, 99, 0x007F8, 20), // 20 COLO, 30 XD
-                new InventoryPouch3GC(InventoryType.KeyItems, info, 1, 0x00848, 43),
-                new InventoryPouch3GC(InventoryType.Balls, info, 99, 0x008F4, 16),
-                new InventoryPouch3GC(InventoryType.TMHMs, info, 99, 0x00934, 64), // no HMs
-                new InventoryPouch3GC(InventoryType.Berries, info, 999, 0x00A34, 46),
-                new InventoryPouch3GC(InventoryType.Medicine, info, 99, 0x00AEC, 3), // Cologne
-            ];
-            return pouch.LoadAll(Data);
-        }
-        set => value.SaveAll(Data);
-    }
+    public override PlayerBag3Colosseum Inventory => new(this);
 
     // Daycare Structure:
     // 0x00 -- Occupied
@@ -293,7 +299,7 @@ public sealed class SAV3Colosseum : SaveFile, IGCSaveFile, IBoxDetailName, IDayc
     public byte DaycareDepositLevel { get => Data[DaycareOffset + 1]; set => Data[DaycareOffset + 1] = value; }
     public uint GetDaycareEXP(int index) => ReadUInt32BigEndian(Data[(DaycareOffset + 4)..]);
     public void SetDaycareEXP(int index, uint value) => WriteUInt32BigEndian(Data[(DaycareOffset + 4)..], value);
-    public Memory<byte> GetDaycareSlot(int slot) => Raw.Slice(DaycareOffset + 8, PokeCrypto.SIZE_3CSTORED);
+    public Memory<byte> GetDaycareSlot(int slot) => Buffer.Slice(DaycareOffset + 8, PokeCrypto.SIZE_3CSTORED);
 
     // Japanese Bonus Disc Gift Flags
     /// <summary> Received Master Ball from JP Colosseum Bonus Disc; for reaching 30,000 <see cref="CouponsTotal"/> </summary>

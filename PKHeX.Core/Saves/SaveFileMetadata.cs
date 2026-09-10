@@ -32,6 +32,14 @@ public sealed record SaveFileMetadata(SaveFile SAV)
     private Memory<byte> Header = Memory<byte>.Empty; // .gci
     private ISaveHandler? Handler;
 
+    /// <summary>
+    /// Indicates whether the save file is a backup file matching this program's backup naming convention.
+    /// </summary>
+    /// <remarks>
+    /// Only check for ".bak" suffix; do not check for other naming conventions as they may vary between different release versions of PKHeX.
+    /// </remarks>
+    public bool IsBackup => FilePath?.EndsWith(".bak", StringComparison.Ordinal) is true;
+
     private string BAKSuffix => $" [{SAV.ShortSummary}].bak";
 
     /// <summary>
@@ -45,7 +53,18 @@ public sealed record SaveFileMetadata(SaveFile SAV)
     /// <summary>
     /// File Dialog filter to help save the file.
     /// </summary>
-    public string Filter => $"{SAV.GetType().Name}|{GetSuggestedExtension()}|All Files|*.*";
+    public string Filter
+    {
+        get
+        {
+            // Try to filter to suggested extension; otherwise default to all files.
+            const string noFilter = "All Files|*.*";
+            var other = GetSuggestedExtension();
+            if (other.Length == 0)
+                return noFilter;
+            return $"{SAV.GetType().Name}|*{other}|{noFilter}";
+        }
+    }
 
     /// <summary>
     /// Writes the input <see cref="data"/> and appends the <see cref="Header"/> and <see cref="Footer"/> if requested.
@@ -53,14 +72,14 @@ public sealed record SaveFileMetadata(SaveFile SAV)
     /// <param name="data">Finalized save file data (with fixed checksums) to be written to a file</param>
     /// <param name="setting">Toggle flags </param>
     /// <returns>Final save file data.</returns>
-    public byte[] Finalize(byte[] data, BinaryExportSetting setting)
+    public Memory<byte> Finalize(Memory<byte> data, BinaryExportSetting setting)
     {
         if (HasFooter && !setting.HasFlag(BinaryExportSetting.ExcludeFooter))
-            data = [..data, ..Footer.Span];
+            data = (byte[])[.. data.Span, ..Footer.Span];
         if (HasHeader && !setting.HasFlag(BinaryExportSetting.ExcludeHeader))
-            data = [..Header.Span, ..data];
+            data = (byte[])[..Header.Span, ..data.Span];
         if (!setting.HasFlag(BinaryExportSetting.ExcludeFinalize))
-            Handler?.Finalize(data);
+            Handler?.Finalize(data.Span);
         return data;
     }
 
@@ -72,6 +91,18 @@ public sealed record SaveFileMetadata(SaveFile SAV)
         Header = header;
         Footer = footer;
         Handler = handler;
+    }
+
+    /// <inheritdoc cref="SetExtraInfo(Memory{byte}, Memory{byte}, ISaveHandler)"/>
+    public void ShareExtraInfo(SaveFileMetadata other)
+    {
+        other.Header = Header;
+        other.Footer = Footer;
+        other.Handler = Handler;
+        if (FilePath is not null)
+            other.SetAsLoadedFile(FilePath);
+        else
+            other.SetAsBlank();
     }
 
     /// <summary>
@@ -102,7 +133,7 @@ public sealed record SaveFileMetadata(SaveFile SAV)
         var fileName = Path.GetFileName(path);
 
         // Trim off existing backup name if present
-        var bakName = Util.CleanFileName(bak);
+        var bakName = PathUtil.CleanFileName(bak);
         if (fileName.EndsWith(bakName, StringComparison.Ordinal))
             fileName = fileName[..^bakName.Length];
 
@@ -159,7 +190,7 @@ public sealed record SaveFileMetadata(SaveFile SAV)
 
     public string GetBackupFileName(string destDir)
     {
-        return Path.Combine(destDir, Util.CleanFileName(BAKName));
+        return Path.Combine(destDir, PathUtil.CleanFileName(BAKName));
     }
 
     private void SetAsBlank()
@@ -174,11 +205,11 @@ public sealed record SaveFileMetadata(SaveFile SAV)
     public string GetSuggestedExtension()
     {
         var sav = SAV;
-        var fn = sav.Metadata.FileName;
-        if (fn != null)
+        var fn = FileName;
+        if (fn is not null)
             return Path.GetExtension(fn);
 
-        if ((sav.Generation is 4 or 5) && sav.Metadata.HasFooter)
+        if (HasFooter && (sav.Generation is 4 or 5))
             return ".dsv";
         return sav.Extension;
     }
@@ -187,7 +218,7 @@ public sealed record SaveFileMetadata(SaveFile SAV)
     /// Gets suggested export options for the save file.
     /// </summary>
     /// <param name="ext">Selected export extension</param>
-    public BinaryExportSetting GetSuggestedFlags(string? ext = null)
+    public BinaryExportSetting GetSuggestedFlags(ReadOnlySpan<char> ext)
     {
         // Do everything as default
         var flags = BinaryExportSetting.None;

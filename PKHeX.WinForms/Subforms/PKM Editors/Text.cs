@@ -7,10 +7,9 @@ using PKHeX.Core;
 
 namespace PKHeX.WinForms;
 
-public partial class TrashEditor : Form
+public sealed partial class TrashEditor : Form
 {
     private readonly IStringConverter Converter;
-    private readonly ToolTip Tip = new() { InitialDelay = 200, IsBalloon = false, AutoPopDelay = 32_767 };
     private readonly List<NumericUpDown> Bytes = [];
     public string FinalString { get; private set; }
     public byte[] FinalBytes { get; private set; }
@@ -18,31 +17,51 @@ public partial class TrashEditor : Form
     private readonly byte[] Raw;
     private bool editing;
 
-    public TrashEditor(TextBoxBase TB_NN, IStringConverter sav, byte generation) : this(TB_NN, [], sav, generation) { }
+    private static TrashEditor Get<T>(TextBoxBase tb, T provider, Span<byte> trash = default) where T : IStringConverter, IGeneration, IContext
+        => new(tb, provider, provider.Generation, provider.Context, trash);
 
-    public TrashEditor(TextBoxBase TB_NN, Span<byte> raw, IStringConverter converter, byte generation)
+    public static void Show<T>(TextBoxBase tb, T provider, Span<byte> trash = default, bool readOnly = false)
+        where T : IStringConverter, IGeneration, IContext
+    {
+        using var form = Get(tb, provider, trash);
+        if (readOnly)
+            form.B_Save.Enabled = false;
+        form.ShowDialog();
+        tb.Text = form.FinalString;
+        form.FinalBytes.CopyTo(trash);
+    }
+
+    // workaround to being unable to translate this via reflection with the DevUtil scraper with ref structs
+#nullable disable
+    // ReSharper disable once NotNullOrRequiredMemberIsNotInitialized
+    private TrashEditor()
     {
         InitializeComponent();
         WinFormsUtil.TranslateInterface(this, Main.CurrentLanguage);
-        Converter = converter;
+    }
+#nullable enable
 
-        FinalString = TB_NN.Text;
+    private TrashEditor(TextBoxBase tb, IStringConverter converter, byte generation, EntityContext context, Span<byte> raw = default) : this()
+    {
+        Converter = converter;
+        TB_Text.DisplayContext = context;
+        FinalString = tb.Text;
 
         editing = true;
         if (raw.Length != 0)
         {
-            Raw = FinalBytes = raw.ToArray();
-            AddTrashEditing(raw.Length, generation);
+            Raw = FinalBytes = [.. raw];
+            AddTrashEditing(raw.Length, generation, context);
         }
         else
         {
             Raw = FinalBytes = [];
         }
 
-        var f = FontUtil.GetPKXFont();
-        AddCharEditing(f, generation);
-        TB_Text.MaxLength = TB_NN.MaxLength;
-        TB_Text.Text = TB_NN.Text;
+        var f = TB_Text.Font;
+        AddCharEditing(f, context);
+        TB_Text.MaxLength = tb.MaxLength;
+        TB_Text.Text = tb.Text;
         TB_Text.Font = f;
 
         if (FLP_Characters.Controls.Count == 0)
@@ -77,9 +96,9 @@ public partial class TrashEditor : Form
         Close();
     }
 
-    private void AddCharEditing(Font f, byte generation)
+    private void AddCharEditing(Font f, EntityContext context)
     {
-        var chars = GetChars(generation);
+        var chars = GetChars(context);
         if (chars.Length == 0)
             return;
 
@@ -88,16 +107,14 @@ public partial class TrashEditor : Form
         {
             var l = GetLabel(((char)c).ToString());
             l.Font = f;
-            l.AutoSize = false;
-            l.Size = new Size(20, 20);
+            l.AutoSize = true;
             l.Click += (_, _) => { if (TB_Text.Text.Length < TB_Text.MaxLength) TB_Text.AppendText(l.Text); };
             FLP_Characters.Controls.Add(l);
-            var tt = new ToolTip();
-            tt.SetToolTip(l, $"Insert {l.Text} (0x{c:X4})");
+            Tip.SetToolTip(l, $"Insert {l.Text} (0x{c:X4})");
         }
     }
 
-    private void AddTrashEditing(int count, byte generation)
+    private void AddTrashEditing(int count, byte generation, EntityContext context)
     {
         FLP_Hex.Visible = true;
         GB_Trash.Visible = true;
@@ -126,11 +143,12 @@ public partial class TrashEditor : Form
         }
         TB_Text.TextChanged += (_, _) => UpdateString(TB_Text);
 
+        var source = GameInfo.Sources; // don't use FilteredSources here -- allow any species
         CB_Species.InitializeBinding();
-        CB_Species.DataSource = new BindingSource(GameInfo.SpeciesDataSource, string.Empty);
+        CB_Species.DataSource = new BindingSource(source.SpeciesDataSource, string.Empty);
 
         CB_Language.InitializeBinding();
-        CB_Language.DataSource = GameInfo.LanguageDataSource(generation);
+        CB_Language.DataSource = GameInfo.LanguageDataSource(generation, context);
     }
 
     private void UpdateNUD(NumericUpDown nud)
@@ -205,7 +223,7 @@ public partial class TrashEditor : Form
     {
         Span<byte> temp = stackalloc byte[Raw.Length];
         var written = Converter.SetString(temp, text, text.Length, StringConverterOption.None);
-        return temp[..written].ToArray();
+        return [.. temp[..written]];
     }
 
     private string GetString() => Converter.GetString(Raw);
@@ -219,16 +237,15 @@ public partial class TrashEditor : Form
         Minimum = min,
         Hexadecimal = hex,
         Width = 40,
-        Padding = new Padding(0),
-        Margin = new Padding(0),
+        Padding = Padding.Empty,
+        Margin = Padding.Empty,
     };
 
-    private static ReadOnlySpan<ushort> GetChars(byte generation) => generation switch
+    private static ReadOnlySpan<ushort> GetChars(EntityContext context) => context switch
     {
-        5 => SpecialCharsGen5,
-        6 => SpecialCharsGen67,
-        7 => SpecialCharsGen67,
-        >= 8 => SpecialCharsGen8,
+        EntityContext.Gen5 => SpecialCharsGen5,
+        EntityContext.Gen6 or EntityContext.Gen7 or EntityContext.Gen7b => SpecialCharsGen67,
+        _ when !context.IsEraPreSwitch => SpecialCharsGen8,
         _ => [], // Undocumented
     };
 

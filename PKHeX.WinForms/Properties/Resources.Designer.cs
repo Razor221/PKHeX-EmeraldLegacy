@@ -19,7 +19,7 @@ namespace PKHeX.WinForms.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "18.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class Resources {
@@ -86,6 +86,16 @@ namespace PKHeX.WinForms.Properties {
         public static System.Drawing.Bitmap alora {
             get {
                 object obj = ResourceManager.GetObject("alora", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap alpha {
+            get {
+                object obj = ResourceManager.GetObject("alpha", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -216,6 +226,16 @@ namespace PKHeX.WinForms.Properties {
         public static System.Drawing.Bitmap bag_medicine {
             get {
                 object obj = ResourceManager.GetObject("bag_medicine", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap bag_mega {
+            get {
+                object obj = ResourceManager.GetObject("bag_mega", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -354,13 +374,16 @@ namespace PKHeX.WinForms.Properties {
         ///   Looks up a localized string similar to PKHeX - By Kaphotics
         ///http://projectpokemon.org/pkhex/
         ///
-        ///23/10/11 - New Update:
-        /// - Added support for Scarlet &amp; Violet 2.0.2 save file sizes.
+        ///26/01/31 - New Update:
+        /// - Legality: Swampertite now released, can exist in inventory/held.
+        /// - Added: Gen9a handling for 9,999 Mega Shards.
+        /// - Fixed: Showdown Set parsing now recognizes IVs/EVs entered in non-standard order.
+        ///
+        ///26/01/22 - New Update: (84569) [12387981]
+        /// - Added: Gen9a file size recognition for Z-A patch 2.0.1
         /// - Legality:
-        /// - - Badwords list has been updated to be more strict per latest Nintendo Switch 16.0.0 firmware. Thanks @Bl4ckSh4rk!
-        /// - - Gen9 Distribution Outbreaks now recognized. Thanks @Lusamine &amp; @sora10pls!
-        /// - - Gen9 Crossover met location logic tweaked for better location identification in Kitakami.
-        /// - - Gen4 Pokéwalker IV spreads are now validated. Thanks  [rest of string was truncated]&quot;;.
+        /// - - Changed: Height/Weight/Scale messages now show the expected value, when applicable.
+        /// - - Fixed: Alpha  [rest of string was truncated]&quot;;.
         /// </summary>
         public static string changelog {
             get {
@@ -621,6 +644,16 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        public static System.Drawing.Bitmap gen_za {
+            get {
+                object obj = ResourceManager.GetObject("gen_za", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         public static System.Drawing.Bitmap gender_0 {
             get {
                 object obj = ResourceManager.GetObject("gender_0", resourceCulture);
@@ -721,6 +754,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=Über
         ///BatchEditor=Batch Editor
+        ///BoxExporter=Box Export
         ///ErrorWindow=Fehler
         ///KChart=Tabelle
         ///Main=PKHeX
@@ -728,15 +762,15 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=Attacken Tutor Editor
         ///RibbonEditor=Band Editor
         ///SAV_Apricorn=Aprikoko Editor
+        ///SAV_BattlePass=Kampfpass Editor
         ///SAV_BerryFieldXY=Beerenfeld Ansicht
         ///SAV_BlockDump8=Spielstand Block Dump
         ///SAV_BoxLayout=Box Layout Editor
         ///SAV_BoxList=PC Ansicht
         ///SAV_Capture7GG=Fang Statistik Editor
+        ///SAV_Chatter=Chatter Editor
         ///SAV_Database=Datenbank
-        ///SAV_Encounters=Begegnungen
-        ///SAV_EventFlags=Event Flag Editor
-        ///SAV_EventRese [rest of string was truncated]&quot;;.
+        ///SAV_DLC5=Generati [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_de {
             get {
@@ -747,6 +781,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=About
         ///BatchEditor=Batch Editor
+        ///BoxExporter=Box Export
         ///ErrorWindow=Error
         ///KChart=KChart
         ///Main=PKHeX
@@ -754,15 +789,15 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=Move Shop Editor
         ///RibbonEditor=Ribbon Editor
         ///SAV_Apricorn=Apricorn Editor
+        ///SAV_BattlePass=Battle Pass Editor
         ///SAV_BerryFieldXY=Berry Field Viewer
         ///SAV_BlockDump8=Savedata Block Dump
         ///SAV_BoxLayout=Box Layout Editor
         ///SAV_BoxList=Storage Viewer
         ///SAV_Capture7GG=Capture Record Editor
+        ///SAV_Chatter=Chatter Editor
         ///SAV_Database=Database
-        ///SAV_Encounters=Database
-        ///SAV_EventFlags=Event Flag Editor
-        ///SAV_EventReset1=Event  [rest of string was truncated]&quot;;.
+        ///SAV_DLC5=Generation 5 [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_en {
             get {
@@ -773,6 +808,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=Acerca de
         ///BatchEditor=Editor por Lotes
+        ///BoxExporter=Exportar caja
         ///ErrorWindow=Error
         ///KChart=KChart
         ///Main=PKHeX
@@ -780,12 +816,12 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=Editor de la Tienda de Movimientos
         ///RibbonEditor=Editor de Cintas
         ///SAV_Apricorn=Editor de Bonguri
+        ///SAV_BattlePass=Editor de pases de combate
         ///SAV_BerryFieldXY=Visor de Campos de Bayas
         ///SAV_BlockDump8=Respaldo de bloques
         ///SAV_BoxLayout=Editor de fondos de Cajas
         ///SAV_BoxList=Visor de Almacenamiento
-        ///SAV_Capture7GG=Editor de Récord de Captura
-        ///SAV_Database= [rest of string was truncated]&quot;;.
+        ///SAV_Capture7GG=Editor de Récord d [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_es {
             get {
@@ -794,23 +830,49 @@ namespace PKHeX.WinForms.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to About=Acerca de
+        ///BatchEditor=Editor por Lotes
+        ///BoxExporter=Exportar caja
+        ///ErrorWindow=Error
+        ///KChart=KChart
+        ///Main=PKHeX
+        ///MemoryAmie=Editor de Memorias / Poké Recreo
+        ///MoveShopEditor=Editor de la Tienda de Movimientos
+        ///RibbonEditor=Editor de Cintas
+        ///SAV_Apricorn=Editor de Bonguri
+        ///SAV_BattlePass=Editor de pases de combate
+        ///SAV_BerryFieldXY=Visor de Campos de Bayas
+        ///SAV_BlockDump8=Respaldo de bloques
+        ///SAV_BoxLayout=Editor de fondos de Cajas
+        ///SAV_BoxList=Visor de Almacenamiento
+        ///SAV_Capture7GG=Editor de Récord d [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string lang_es_419 {
+            get {
+                return ResourceManager.GetString("lang_es-419", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to About=À propos
         ///BatchEditor=Éditeur en vrac
+        ///BoxExporter=Export de boîtes
         ///ErrorWindow=Erreur
         ///KChart=KChart
         ///Main=PKHeX
-        ///MemoryAmie=Memory / Amie Editor
+        ///MemoryAmie=Éditeur souvenir/ami
         ///MoveShopEditor=Éditeur de capacités
         ///RibbonEditor=Rubans
         ///SAV_Apricorn=Noigrumes
+        ///SAV_BattlePass=Cartes de combat
         ///SAV_BerryFieldXY=Champs de Baies
-        ///SAV_BlockDump8=Sauvegarde des blocs de données
+        ///SAV_BlockDump8=Blocs de données
         ///SAV_BoxLayout=Fonds de Boîtes
         ///SAV_BoxList=Visualiseur de stockage
         ///SAV_Capture7GG=Capture Éditeur d&apos;enregistrement
+        ///SAV_Chatter=Éditeur Babil
         ///SAV_Database=Base de Données
-        ///SAV_Encounters=Base de données
-        ///SAV_EventFlags=É [rest of string was truncated]&quot;;.
+        ///S [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_fr {
             get {
@@ -821,6 +883,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=Info
         ///BatchEditor=Editor Batch
+        ///BoxExporter=Box Export
         ///ErrorWindow=Errore
         ///KChart=KChart
         ///Main=PKHeX
@@ -828,14 +891,13 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=Editor Negozio Mosse
         ///RibbonEditor=Editor Fiocchi
         ///SAV_Apricorn=Editor Ghicocche
+        ///SAV_BattlePass=Editor Pass Lotta
         ///SAV_BerryFieldXY=Visualizzatore Campi di Bacche
         ///SAV_BlockDump8=Dump Blocchi di Salvataggio
         ///SAV_BoxLayout=Editor Disposizione Box
         ///SAV_BoxList=Visualizzatore Storage
         ///SAV_Capture7GG=Editor Record di Catture
-        ///SAV_Database=Database
-        ///SAV_Encounters=Database
-        ///SAV_ [rest of string was truncated]&quot;;.
+        ///SAV_Chatter=Chatter E [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_it {
             get {
@@ -846,25 +908,27 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=About
         ///BatchEditor=バッチエディタ
+        ///BoxExporter=ボックスエクスポート
         ///ErrorWindow=エラー
         ///KChart=KChart
         ///Main=PKHeX
         ///MemoryAmie=おもいで
-        ///MoveShopEditor=Move Shop Editor
+        ///MoveShopEditor=技教え
         ///RibbonEditor=取得リボン
         ///SAV_Apricorn=ぼんぐり
+        ///SAV_BattlePass=バトルパス
         ///SAV_BerryFieldXY=きのみ畑
         ///SAV_BlockDump8=Savedata Block Dump
         ///SAV_BoxLayout=ボックスレイアウト
         ///SAV_BoxList=ボックスリスト
         ///SAV_Capture7GG=Capture Record Editor
+        ///SAV_Chatter=おしゃべり
         ///SAV_Database=データベース
-        ///SAV_Encounters=Database
+        ///SAV_DLC5=Generation 5 DLC I/O
+        ///SAV_Donut9a=Donut Editor
+        ///SAV_Encounters=データベース
         ///SAV_EventFlags=イベントフラグ
-        ///SAV_EventReset1=イベントリセット
-        ///SAV_EventWork=Event Flag Editor
-        ///SAV_FlagWork8b=Event Flag Editor
-        ///SAV_FolderList=フ [rest of string was truncated]&quot;;.
+        ///SAV_EventReset1=イベントリセット        /// [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_ja {
             get {
@@ -875,6 +939,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=정보
         ///BatchEditor=일괄 편집 도구
+        ///BoxExporter=Box Export
         ///ErrorWindow=오류
         ///KChart=KChart
         ///Main=PKHeX
@@ -882,17 +947,17 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=Move Shop Editor
         ///RibbonEditor=리본 편집 도구
         ///SAV_Apricorn=규토리 편집 도구
+        ///SAV_BattlePass=Battle Pass Editor
         ///SAV_BerryFieldXY=나무열매 밭 뷰어
         ///SAV_BlockDump8=세이브 데이터 블록 덤프
         ///SAV_BoxLayout=박스 레이아웃 편집 도구
         ///SAV_BoxList=소지 공간 뷰어
         ///SAV_Capture7GG=Capture Record Editor
+        ///SAV_Chatter=Chatter Editor
         ///SAV_Database=데이터베이스
-        ///SAV_Encounters=데이터베이스
-        ///SAV_EventFlags=이벤트 플래그 편집 도구
-        ///SAV_EventReset1=이벤트 초기화 도구
-        ///SAV_EventWork=이벤트 플래그 편집 도구
-        ///SAV_FlagWork8b=Event Flag Edit [rest of string was truncated]&quot;;.
+        ///SAV_DLC5=Generation 5 DLC I/O
+        ///SAV_Donut9a=Donut Editor
+        ///SAV_Encounters=데이터 [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_ko {
             get {
@@ -903,6 +968,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=关于
         ///BatchEditor=批量编辑器
+        ///BoxExporter=导出箱子
         ///ErrorWindow=错误
         ///KChart=信息列表
         ///Main=PKHeX
@@ -910,23 +976,23 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=招式商店编辑器
         ///RibbonEditor=奖章
         ///SAV_Apricorn=球果编辑
+        ///SAV_BattlePass=对战通行证编辑
         ///SAV_BerryFieldXY=树果田查看器
         ///SAV_BlockDump8=存档转储
         ///SAV_BoxLayout=盒子外观
         ///SAV_BoxList=寄放系统
         ///SAV_Capture7GG=捕获记录编辑
+        ///SAV_Chatter=语音编辑器
         ///SAV_Database=数据库
+        ///SAV_DLC5=第五世代DLC工具
+        ///SAV_Donut9a=甜甜圈编辑器
         ///SAV_Encounters=数据库
         ///SAV_EventFlags=事件旗标编辑
         ///SAV_EventReset1=事件重置
         ///SAV_EventWork=事件标志编辑器
         ///SAV_FlagWork8b=事件标志编辑器
         ///SAV_FolderList=文件夹列表
-        ///SAV_GameSelect=游戏选择
-        ///SAV_Geonet4=地理网编辑
-        ///SAV_HallOfFame=名人堂
-        ///SAV_HallOfFame7=名人堂
-        ///SAV [rest of string was truncated]&quot;;.
+        ///SAV_ [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_zh_Hans {
             get {
@@ -937,6 +1003,7 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized string similar to About=關於
         ///BatchEditor=批量編輯器
+        ///BoxExporter=Box Export
         ///ErrorWindow=錯誤
         ///KChart=信息清單
         ///Main=PKHeX
@@ -944,23 +1011,21 @@ namespace PKHeX.WinForms.Properties {
         ///MoveShopEditor=招式商店編輯器
         ///RibbonEditor=獎章
         ///SAV_Apricorn=球果編輯
+        ///SAV_BattlePass=Battle Pass Editor
         ///SAV_BerryFieldXY=樹果田檢視器
         ///SAV_BlockDump8=存檔轉儲
         ///SAV_BoxLayout=盒子外觀
         ///SAV_BoxList=寄放系統
         ///SAV_Capture7GG=捕獲記錄編輯
+        ///SAV_Chatter=Chatter Editor
         ///SAV_Database=資料庫
+        ///SAV_DLC5=Generation 5 DLC I/O
+        ///SAV_Donut9a=Donut Editor
         ///SAV_Encounters=遇見資料庫
         ///SAV_EventFlags=事件旗標編輯
         ///SAV_EventReset1=事件重置
         ///SAV_EventWork=事件標誌編輯器
-        ///SAV_FlagWork8b=事件標誌編輯器
-        ///SAV_FolderList=資料夾清單
-        ///SAV_GameSelect=遊戲選擇
-        ///SAV_Geonet4=寰宇網編輯器
-        ///SAV_HallOfFame=名人堂
-        ///SAV_HallOfFame7=名人堂
-        /// [rest of string was truncated]&quot;;.
+        ///SAV_F [rest of string was truncated]&quot;;.
         /// </summary>
         public static string lang_zh_Hant {
             get {
@@ -984,6 +1049,16 @@ namespace PKHeX.WinForms.Properties {
         public static System.Drawing.Bitmap leaf {
             get {
                 object obj = ResourceManager.GetObject("leaf", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap left {
+            get {
+                object obj = ResourceManager.GetObject("left", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -1091,6 +1166,16 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        public static System.Drawing.Bitmap popout {
+            get {
+                object obj = ResourceManager.GetObject("popout", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         public static System.Drawing.Bitmap qr {
             get {
                 object obj = ResourceManager.GetObject("qr", resourceCulture);
@@ -1161,6 +1246,16 @@ namespace PKHeX.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        public static System.Drawing.Bitmap right {
+            get {
+                object obj = ResourceManager.GetObject("right", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         public static System.Drawing.Bitmap savePKM {
             get {
                 object obj = ResourceManager.GetObject("savePKM", resourceCulture);
@@ -1216,6 +1311,87 @@ namespace PKHeX.WinForms.Properties {
         public static string shortcuts {
             get {
                 return ResourceManager.GetString("shortcuts", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wenn bestimmte Symbole oder Texte nicht korrekt angezeigt werden: Optionen -&gt; Einstellungen -&gt; Anzeige -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_de {
+            get {
+                return ResourceManager.GetString("shortcuts_de", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Si tienes problemas al ver ciertos símbolos/texto: Opciones -&gt; Ajustes -&gt; Pantalla -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_es {
+            get {
+                return ResourceManager.GetString("shortcuts_es", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Si tienes problemas al ver ciertos símbolos/texto: Opciones -&gt; Configuración -&gt; Pantalla -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_es_419 {
+            get {
+                return ResourceManager.GetString("shortcuts_es-419", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Si certains symboles ou textes s'affichent mal : Options -&gt; Paramètres -&gt; Affichage -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_fr {
+            get {
+                return ResourceManager.GetString("shortcuts_fr", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Se alcuni simboli o testi non vengono visualizzati correttamente: Opzioni -&gt; Impostazioni -&gt; Visualizzazione -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_it {
+            get {
+                return ResourceManager.GetString("shortcuts_it", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 一部の記号や文字が正しく表示されない場合: オプション -&gt; 設定 -&gt; 表示 -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_ja {
+            get {
+                return ResourceManager.GetString("shortcuts_ja", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 일부 기호나 텍스트가 제대로 보이지 않는 경우: 옵션 -&gt; 설정 -&gt; 표시 -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_ko {
+            get {
+                return ResourceManager.GetString("shortcuts_ko", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 如果某些符号或文字显示异常：选项 -&gt; 设置 -&gt; 显示 -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_zh_Hans {
+            get {
+                return ResourceManager.GetString("shortcuts_zh-Hans", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 如果某些符號或文字顯示異常：選項 -&gt; 設定 -&gt; 顯示 -&gt; Unicode [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string shortcuts_zh_Hant {
+            get {
+                return ResourceManager.GetString("shortcuts_zh-Hant", resourceCulture);
             }
         }
         

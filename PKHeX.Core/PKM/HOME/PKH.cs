@@ -14,12 +14,17 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
     public GameDataPA8? DataPA8 { get; private set; }
     public GameDataPB8? DataPB8 { get; private set; }
     public GameDataPK9? DataPK9 { get; private set; }
+    public GameDataPC9? DataPC9 { get; private set; }
+    public GameDataPA9? DataPA9 { get; private set; }
 
     public override EntityContext Context => EntityContext.None;
+    public override int WriteDecryptedDataStored(Span<byte> destination) => Rebuild(destination);
+    protected override void EncryptStored(Span<byte> stored) { }
+    protected override void EncryptParty(Span<byte> party) { }
 
-    public PKH(byte[] data) : base(DecryptHome(data))
+    public PKH(Memory<byte> data) : base(DecryptHome(data))
     {
-        var mem = Data.AsMemory(HomeCrypto.SIZE_1HEADER + 2);
+        var mem = Raw[(HomeCrypto.SIZE_1HEADER + 2)..];
         var core = mem[..CoreDataSize];
         var side = mem.Slice(core.Length + 2, GameDataSize);
 
@@ -31,7 +36,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
     {
         CoreDataSize = HomeCrypto.SIZE_CORE;
 
-        var mem = Data.AsMemory(HomeCrypto.SIZE_1HEADER + 2);
+        var mem = Raw[(HomeCrypto.SIZE_1HEADER + 2)..];
         var core = mem[..CoreDataSize];
         Core = new GameDataCore(core) { AffixedRibbon = PKHeX.Core.AffixedRibbon.None };
     }
@@ -52,29 +57,31 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         }
     }
 
-    private IGameDataSide ReadGameData1(Memory<byte> chunk, HomeGameDataFormat format) => format switch
+    private object ReadGameData1(Memory<byte> chunk, HomeGameDataFormat format) => format switch
     {
         HomeGameDataFormat.PB7 => DataPB7 = new GameDataPB7(chunk),
         HomeGameDataFormat.PK8 => DataPK8 = new GameDataPK8(chunk),
         HomeGameDataFormat.PA8 => DataPA8 = new GameDataPA8(chunk),
         HomeGameDataFormat.PB8 => DataPB8 = new GameDataPB8(chunk),
         HomeGameDataFormat.PK9 => DataPK9 = new GameDataPK9(chunk),
+        HomeGameDataFormat.PC9 => DataPC9 = new GameDataPC9(chunk),
+        HomeGameDataFormat.PA9 => DataPA9 = new GameDataPA9(chunk),
         _ => throw new ArgumentException($"Unknown {nameof(HomeGameDataFormat)} {format}"),
     };
 
-    private static byte[] DecryptHome(byte[] data)
+    private static Memory<byte> DecryptHome(Memory<byte> data)
     {
         HomeCrypto.DecryptIfEncrypted(ref data);
       //Array.Resize(ref data, HomeCrypto.SIZE_1STORED);
         return data;
     }
 
-    public ushort DataVersion     { get => ReadUInt16LittleEndian(Data.AsSpan(0x00)); set => WriteUInt16LittleEndian(Data.AsSpan(0x00), value); }
-    public ulong EncryptionSeed   { get => ReadUInt64LittleEndian(Data.AsSpan(0x02)); set => WriteUInt64LittleEndian(Data.AsSpan(0x02), value); }
-    public uint Checksum          { get => ReadUInt32LittleEndian(Data.AsSpan(0x0A)); set => WriteUInt32LittleEndian(Data.AsSpan(0x0A), value); }
-    public ushort EncodedDataSize { get => ReadUInt16LittleEndian(Data.AsSpan(0x0E)); set => WriteUInt16LittleEndian(Data.AsSpan(0x0E), value); }
-    public ushort CoreDataSize    { get => ReadUInt16LittleEndian(Data.AsSpan(0x10)); set => WriteUInt16LittleEndian(Data.AsSpan(0x10), value); }
-    public ushort GameDataSize    { get => ReadUInt16LittleEndian(Data.AsSpan(0x12 + CoreDataSize)); set => WriteUInt16LittleEndian(Data.AsSpan(0x12 + CoreDataSize), value); }
+    public ushort DataVersion     { get => ReadUInt16LittleEndian(Data); set => WriteUInt16LittleEndian(Data, value); }
+    public ulong EncryptionSeed   { get => ReadUInt64LittleEndian(Data[0x02..]); set => WriteUInt64LittleEndian(Data[0x02..], value); }
+    public uint Checksum          { get => ReadUInt32LittleEndian(Data[0x0A..]); set => WriteUInt32LittleEndian(Data[0x0A..], value); }
+    public ushort EncodedDataSize { get => ReadUInt16LittleEndian(Data[0x0E..]); set => WriteUInt16LittleEndian(Data[0x0E..], value); }
+    public ushort CoreDataSize    { get => ReadUInt16LittleEndian(Data[0x10..]); set => WriteUInt16LittleEndian(Data[0x10..], value); }
+    public ushort GameDataSize    { get => ReadUInt16LittleEndian(Data[(0x12 + CoreDataSize)..]); set => WriteUInt16LittleEndian(Data[(0x12 + CoreDataSize)..], value); }
 
     private const int GameDataStart = HomeCrypto.SIZE_1HEADER + 2 + HomeCrypto.SIZE_CORE + 2;
 
@@ -99,7 +106,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
     public ushort MarkingValue { get => Core.MarkingValue; set => Core.MarkingValue = value; }
     public override uint PID { get => Core.PID; set => Core.PID = value; }
     public override Nature Nature { get => Core.Nature; set => Core.Nature = value; }
-    public override Nature StatNature { get => Core.StatNature; set => Core.StatNature = value; }
+    public override Nature StatAlignment { get => Core.StatAlignment; set => Core.StatAlignment = value; }
     public override bool FatefulEncounter { get => Core.FatefulEncounter; set => Core.FatefulEncounter = value; }
     public override byte Gender { get => Core.Gender; set => Core.Gender = value; }
     public override byte Form { get => Core.Form; set => Core.Form = value; }
@@ -208,14 +215,14 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
     public override ushort Move2       { get => LatestGameData.Move2      ; set => LatestGameData.Move2       = value; }
     public override ushort Move3       { get => LatestGameData.Move3      ; set => LatestGameData.Move3       = value; }
     public override ushort Move4       { get => LatestGameData.Move4      ; set => LatestGameData.Move4       = value; }
-    public override int Move1_PP    { get => LatestGameData.Move1_PP   ; set => LatestGameData.Move1_PP    = value; }
-    public override int Move2_PP    { get => LatestGameData.Move2_PP   ; set => LatestGameData.Move2_PP    = value; }
-    public override int Move3_PP    { get => LatestGameData.Move3_PP   ; set => LatestGameData.Move3_PP    = value; }
-    public override int Move4_PP    { get => LatestGameData.Move4_PP   ; set => LatestGameData.Move4_PP    = value; }
-    public override int Move1_PPUps { get => LatestGameData.Move1_PPUps; set => LatestGameData.Move1_PPUps = value; }
-    public override int Move2_PPUps { get => LatestGameData.Move2_PPUps; set => LatestGameData.Move2_PPUps = value; }
-    public override int Move3_PPUps { get => LatestGameData.Move3_PPUps; set => LatestGameData.Move3_PPUps = value; }
-    public override int Move4_PPUps { get => LatestGameData.Move4_PPUps; set => LatestGameData.Move4_PPUps = value; }
+    public override int Move1_PP    { get => (LatestGameData as IGameDataSidePP)?.Move1_PP    ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move1_PP    = (byte)value; }
+    public override int Move2_PP    { get => (LatestGameData as IGameDataSidePP)?.Move2_PP    ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move2_PP    = (byte)value; }
+    public override int Move3_PP    { get => (LatestGameData as IGameDataSidePP)?.Move3_PP    ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move3_PP    = (byte)value; }
+    public override int Move4_PP    { get => (LatestGameData as IGameDataSidePP)?.Move4_PP    ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move4_PP    = (byte)value; }
+    public override int Move1_PPUps { get => (LatestGameData as IGameDataSidePP)?.Move1_PPUps ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move1_PPUps = (byte)value; }
+    public override int Move2_PPUps { get => (LatestGameData as IGameDataSidePP)?.Move2_PPUps ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move2_PPUps = (byte)value; }
+    public override int Move3_PPUps { get => (LatestGameData as IGameDataSidePP)?.Move3_PPUps ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move3_PPUps = (byte)value; }
+    public override int Move4_PPUps { get => (LatestGameData as IGameDataSidePP)?.Move4_PPUps ?? 0; set => (LatestGameData as IGameDataSidePP)?.Move4_PPUps = (byte)value; }
 
     public override byte Ball         { get => LatestGameData.Ball;         set => LatestGameData.Ball = value; }
     public override ushort MetLocation { get => LatestGameData.MetLocation; set => LatestGameData.MetLocation = value; }
@@ -253,24 +260,46 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
     public override void RefreshChecksum() => Checksum = 0;
     public override bool ChecksumValid => true;
 
-    protected override byte[] Encrypt()
-    {
-        var result = Rebuild();
-        return HomeCrypto.Encrypt(result);
-    }
-
     public byte[] Rebuild()
     {
         var length = WriteLength;
-
         // Handle PKCS7 manually
-        var remainder = length & 0xF;
+        var totalSize = GetPaddedSize(length, out var remainder);
+
+        var result = new byte[totalSize];
+        WriteTo(result, length, remainder, totalSize);
+        return result;
+    }
+
+    public int Rebuild(Span<byte> dest)
+    {
+        var length = WriteLength;
+        // Handle PKCS7 manually
+        var totalSize = GetPaddedSize(length, out var remainder);
+
+        var result = dest[..totalSize];
+        WriteTo(result, length, remainder, totalSize);
+        return totalSize;
+    }
+
+    private void WriteTo(Span<byte> data, int innerLength, int remainder, int totalSize)
+    {
+        var payload = data[..innerLength];
+        data[innerLength..].Fill((byte)remainder);
+        WriteTo(payload, totalSize);
+    }
+
+    public static int GetPaddedSize(int innerLength, out int remainder)
+    {
+        remainder = innerLength & 0xF;
         if (remainder != 0) // pad to nearest 0x10, fill remainder bytes with value.
             remainder = 0x10 - remainder;
-        var result = new byte[length + remainder];
-        var span = result.AsSpan(0, length);
-        result.AsSpan(length).Fill((byte)remainder);
+        var totalSize = innerLength + remainder;
+        return totalSize;
+    }
 
+    private void WriteTo(Span<byte> span, int innerLength)
+    {
         // Header and Core are already in the current byte array.
         // Write each part, starting with header and core.
         int ctr = HomeCrypto.SIZE_1HEADER + 2;
@@ -282,15 +311,15 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         if (DataPA8 is { } pa8) ctr += pa8.WriteTo(span[ctr..]);
         if (DataPB8 is { } pb8) ctr += pb8.WriteTo(span[ctr..]);
         if (DataPK9 is { } pk9) ctr += pk9.WriteTo(span[ctr..]);
+        if (DataPC9 is { } pc9) ctr += pc9.WriteTo(span[ctr..]);
+        if (DataPA9 is { } pa9) ctr += pa9.WriteTo(span[ctr..]);
         WriteUInt16LittleEndian(gameDataLengthSpan, GameDataSize = (ushort)(ctr - gameDataStart));
 
         // Update metadata to ensure we're a valid object.
         DataVersion = HomeCrypto.VersionLatest;
-        EncodedDataSize = (ushort)(result.Length - HomeCrypto.SIZE_1HEADER);
+        EncodedDataSize = (ushort)(innerLength - HomeCrypto.SIZE_1HEADER);
         CoreDataSize = (ushort)Core.SerializedSize;
-        Data.AsSpan(0, HomeCrypto.SIZE_1HEADER + 2).CopyTo(span); // Copy updated header & CoreData length.
-
-        return result;
+        Data[..(HomeCrypto.SIZE_1HEADER + 2)].CopyTo(span); // Copy updated header & CoreData length.
     }
 
     private int WriteLength
@@ -303,12 +332,14 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
             if (DataPA8 is {} a8) length += a8.SerializedSize;
             if (DataPB8 is {} b8) length += b8.SerializedSize;
             if (DataPK9 is {} k9) length += k9.SerializedSize;
+            if (DataPA9 is {} a9) length += a9.SerializedSize;
             return length;
         }
     }
 
-    public override PKH Clone() => new((byte[])Data.Clone())
+    public override PKH Clone() => new(Data.ToArray())
     {
+        DataPA9 = DataPA9?.Clone(),
         DataPK9 = DataPK9?.Clone(),
         DataPK8 = DataPK8?.Clone(),
         DataPA8 = DataPA8?.Clone(),
@@ -318,7 +349,8 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
 
     public IGameDataSide LatestGameData => OriginalGameData() ?? GetFallbackGameData();
 
-    private IGameDataSide GetFallbackGameData() => DataPB7
+    private IGameDataSide GetFallbackGameData() => DataPA9 // Backwards transfer threshold.
+                                                ?? DataPB7
                                                 ?? DataPK9
                                                 ?? DataPB8
                                                 ?? DataPA8
@@ -330,6 +362,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         BD or SP => DataPB8 ??= new(),
         PLA      => DataPA8 ??= new(),
         SL or VL => DataPK9 ??= new(),
+        GameVersion.ZA     => DataPA9 ??= new(),
         _                  => DataPK8 ??= new(),
     };
 
@@ -340,6 +373,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         BD or SP => DataPB8,
         PLA      => DataPA8,
         SL or VL => DataPK9,
+        GameVersion.ZA => DataPA9,
 
         // SW/SH can be confused with others if we didn't seed with the original transfer data.
         SW or SH => DataPK8 switch
@@ -358,6 +392,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
     public PB8? ConvertToPB8() => DataPB8 is { } x ? x.ConvertToPKM(this) : (DataPB8 ??= GameDataPB8.TryCreate(this))?.ConvertToPKM(this);
     public PA8? ConvertToPA8() => DataPA8 is { } x ? x.ConvertToPKM(this) : (DataPA8 ??= GameDataPA8.TryCreate(this))?.ConvertToPKM(this);
     public PK9? ConvertToPK9() => DataPK9 is { } x ? x.ConvertToPKM(this) : (DataPK9 ??= GameDataPK9.TryCreate(this))?.ConvertToPKM(this);
+    public PA9? ConvertToPA9() => DataPA9 is { } x ? x.ConvertToPKM(this) : (DataPA9 ??= GameDataPA9.TryCreate(this))?.ConvertToPKM(this);
 
     public void CopyTo(PKM pk) => Core.CopyTo(pk);
 
@@ -368,6 +403,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         if (type == typeof(PB8)) return HomeGameDataFormat.PB8;
         if (type == typeof(PA8)) return HomeGameDataFormat.PA8;
         if (type == typeof(PK9)) return HomeGameDataFormat.PK9;
+        if (type == typeof(PA9)) return HomeGameDataFormat.PA9;
         return HomeGameDataFormat.None;
     }
 
@@ -378,6 +414,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         HomeGameDataFormat.PB8 => ConvertToPB8(),
         HomeGameDataFormat.PA8 => ConvertToPA8(),
         HomeGameDataFormat.PK9 => ConvertToPK9(),
+        HomeGameDataFormat.PA9 => ConvertToPA9(),
         _ => null,
     };
 
@@ -400,6 +437,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         else if (pk is PB8 pb8) (DataPB8 ??= new GameDataPB8()).CopyFrom(pb8, this);
         else if (pk is PA8 pa8) (DataPA8 ??= new GameDataPA8()).CopyFrom(pa8, this);
         else if (pk is PK9 pk9) (DataPK9 ??= new GameDataPK9()).CopyFrom(pk9, this);
+        else if (pk is PA9 pa9) (DataPA9 ??= new GameDataPA9()).CopyFrom(pa9, this);
     }
 
     private IGameDataSide? FirstScaleData => DataPK9 ?? DataPA8 as IGameDataSide;
@@ -470,7 +508,7 @@ public sealed class PKH : PKM, IHandlerLanguage, IFormArgument, IHomeTrack, IBat
         // Does not check Language or Version for equality! Can result in mismatches or empty (0) language value.
         // Check the trainer string for equality (most expensive of all last).
 
-        Span<char> exist = stackalloc char[pk.TrashCharCountTrainer];
+        Span<char> exist = stackalloc char[pk.TrashCharCountHandler];
         var len = pk.LoadString(pk.HandlingTrainerTrash, exist);
         exist = exist[..len];
 

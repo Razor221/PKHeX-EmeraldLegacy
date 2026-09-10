@@ -15,6 +15,11 @@ namespace PKHeX.WinForms;
 
 public partial class ReportGrid : Form
 {
+    public IPropertyProvider<PKM> PropertyProvider { get; init; } =
+        new BatchPropertyProvider<EntityBatchEditor, PKM>(EntityBatchEditor.Instance);
+
+    private sealed class PokemonList<T> : SortableBindingList<T> where T : class;
+
     public ReportGrid()
     {
         InitializeComponent();
@@ -47,11 +52,11 @@ public partial class ReportGrid : Form
         ContextMenuStrip mnu = new();
         mnu.Items.Add(mnuHide);
         mnu.Items.Add(mnuRestore);
+        components ??= new System.ComponentModel.Container();
+        components.Add(mnu);
 
         dgData.ContextMenuStrip = mnu;
     }
-
-    private sealed class PokemonList<T> : SortableBindingList<T> where T : class;
 
     public void PopulateData(IReadOnlyList<SlotCache> data) => PopulateData(data, [], []);
 
@@ -108,8 +113,7 @@ public partial class ReportGrid : Form
             if (prop.Length == 0)
                 continue;
             var col = dgData.Columns[prop];
-            if (col != null)
-                col.Visible = false;
+            col?.Visible = false;
         }
     }
 
@@ -143,8 +147,6 @@ public partial class ReportGrid : Form
         ArrayPool<string>.Shared.Return(rent, true);
     }
 
-    public IPropertyProvider PropertyProvider { get; init; } = DefaultPropertyProvider.Instance;
-
     private bool TryGetCustomCell(PKM pk, string prop, [NotNullWhen(true)] out string? result)
     {
         if (PropertyProvider.TryGetProperty(pk, prop, out result))
@@ -161,6 +163,8 @@ public partial class ReportGrid : Form
 
     private void PromptSaveCSV(object sender, FormClosingEventArgs e)
     {
+        if (ModifierKeys.HasFlag(Keys.Shift))
+            return;
         if (WinFormsUtil.Prompt(MessageBoxButtons.YesNo, MsgReportExportCSV) != DialogResult.Yes)
             return;
         using var savecsv = new SaveFileDialog();
@@ -194,7 +198,7 @@ public partial class ReportGrid : Form
             return base.ProcessCmdKey(ref msg, keyData);
 
         var content = dgData.GetClipboardContent();
-        if (content == null)
+        if (content is null)
             return base.ProcessCmdKey(ref msg, keyData);
 
         string data = content.GetText();
@@ -215,7 +219,7 @@ public partial class ReportGrid : Form
     private static string[] ConvertTabbedToRedditTable(ReadOnlySpan<string> lines)
     {
         string[] newlines = new string[lines.Length + 1];
-        int tabcount = lines[0].AsSpan().Count('\t');
+        int tabcount = lines[0].Count('\t');
 
         newlines[0] = lines[0].Replace('\t', '|');
         newlines[1] = string.Join(":--:", Enumerable.Repeat('|', tabcount + 2)); // 2 pipes for each end

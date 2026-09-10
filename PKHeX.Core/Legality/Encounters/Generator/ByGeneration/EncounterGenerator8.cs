@@ -9,9 +9,9 @@ public sealed class EncounterGenerator8 : IEncounterGenerator
     public static readonly EncounterGenerator8 Instance = new();
     public bool CanGenerateEggs => true;
 
-    public IEnumerable<IEncounterable> GetPossible(PKM _, EvoCriteria[] chain, GameVersion game, EncounterTypeGroup groups)
+    public IEnumerable<IEncounterable> GetPossible(PKM _, EvoCriteria[] chain, GameVersion version, EncounterTypeGroup groups)
     {
-        var iterator = new EncounterPossible8(chain, groups, game);
+        var iterator = new EncounterPossible8(chain, groups, version);
         foreach (var enc in iterator)
             yield return enc;
     }
@@ -27,11 +27,11 @@ public sealed class EncounterGenerator8 : IEncounterGenerator
     private const EntityContext Context = EntityContext.Gen8;
     private const byte EggLevel = 1;
 
-    private static EncounterEgg CreateEggEncounter(ushort species, byte form, GameVersion version)
+    private static EncounterEgg8 CreateEggEncounter(ushort species, byte form, GameVersion version)
     {
         if (FormInfo.IsBattleOnlyForm(species, form, Generation) || species is (int)Species.Rotom or (int)Species.Castform)
             form = FormInfo.GetOutOfBattleForm(species, form, Generation);
-        return new EncounterEgg(species, form, EggLevel, Generation, version, Context);
+        return new EncounterEgg8(species, form, version);
     }
 
     private static (ushort Species, byte Form) GetBaby(EvoCriteria lowest)
@@ -43,7 +43,7 @@ public sealed class EncounterGenerator8 : IEncounterGenerator
         return (lowest.Species, lowest.Form);
     }
 
-    public static bool TryGetEgg(ReadOnlySpan<EvoCriteria> chain, GameVersion version, [NotNullWhen(true)] out EncounterEgg? result)
+    public static bool TryGetEgg(ReadOnlySpan<EvoCriteria> chain, GameVersion version, [NotNullWhen(true)] out EncounterEgg8? result)
     {
         result = null;
         var devolved = chain[^1];
@@ -69,7 +69,7 @@ public sealed class EncounterGenerator8 : IEncounterGenerator
         return true;
     }
 
-    public static bool TryGetSplit(EncounterEgg other, ReadOnlySpan<EvoCriteria> chain, [NotNullWhen(true)] out EncounterEgg? result)
+    public static bool TryGetSplit(EncounterEgg8 other, ReadOnlySpan<EvoCriteria> chain, [NotNullWhen(true)] out EncounterEgg8? result)
     {
         result = null;
         // Check for split-breed

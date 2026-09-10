@@ -27,8 +27,8 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
     /// <param name="data">Raw data of the mystery gift.</param>
     /// <param name="ext">Extension of the file from which the <paramref name="data"/> was retrieved.</param>
     /// <returns>An instance of <see cref="MysteryGift"/> representing the given data, or null if <paramref name="data"/> or <paramref name="ext"/> is invalid.</returns>
-    /// <remarks>This overload differs from <see cref="GetMysteryGift(byte[])"/> by checking the <paramref name="data"/>/<paramref name="ext"/> combo for validity.  If either is invalid, a null reference is returned.</remarks>
-    public static DataMysteryGift? GetMysteryGift(byte[] data, ReadOnlySpan<char> ext) => data.Length switch
+    /// <remarks>This overload differs from <see cref="GetMysteryGift(Memory{byte})"/> by checking the <paramref name="data"/>/<paramref name="ext"/> combo for validity.  If either is invalid, a null reference is returned.</remarks>
+    public static DataMysteryGift? GetMysteryGift(Memory<byte> data, ReadOnlySpan<char> ext) => data.Length switch
     {
         PGT.Size when Equals(ext, ".pgt") => new PGT(data),
         PCD.Size when Equals(ext, ".pcd", ".wc4") => new PCD(data),
@@ -41,6 +41,7 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
         WB8.Size when Equals(ext, ".wb8") => new WB8(data),
         WA8.Size when Equals(ext, ".wa8") => new WA8(data),
         WC9.Size when Equals(ext, ".wc9") => new WC9(data),
+        WA9.Size when Equals(ext, ".wa9") => new WA9(data),
 
         WC5Full.Size when Equals(ext, ".wc5full") => new WC5Full(data).Gift,
         WC6Full.Size when Equals(ext, ".wc6full") => new WC6Full(data).Gift,
@@ -56,7 +57,7 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
     /// </summary>
     /// <param name="data">Raw data of the mystery gift.</param>
     /// <returns>An instance of <see cref="MysteryGift"/> representing the given data, or null if <paramref name="data"/> is invalid.</returns>
-    public static DataMysteryGift? GetMysteryGift(byte[] data) => data.Length switch
+    public static DataMysteryGift? GetMysteryGift(Memory<byte> data) => data.Length switch
     {
         PGT.Size => new PGT(data),
         PCD.Size => new PCD(data),
@@ -65,15 +66,15 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
         WB8.Size => new WB8(data),
 
         // WC8/WC5Full: WC8 0x2CF always 0, WC5Full 0x2CF contains card checksum
-        WC8.Size => data[0x2CF] == 0 ? new WC8(data) : new PGF(data),
+        WC8.Size => data.Span[0x2CF] == 0 ? new WC8(data) : new PGF(data),
 
-        // WA8/WC9: WA8 CardType >0 for WA8, 0 for WC9.
-        WA8.Size => data[0xF] > 0 ? new WA8(data) : new WC9(data),
+        // WA8/WC9/WA9: WA8 CardType >0 for WA8, 0 for WC9/WA9. WA9 Checksum located at 0x2C0, always 0 for WC9.
+        WA8.Size => data.Span[0xF] > 0 ? new WA8(data) : data.Span[0x2C0] == 0 ? new WC9(data) : new WA9(data),
 
         // WC6/WC7: Check year
-        WC6.Size => ReadUInt32LittleEndian(data.AsSpan(0x4C)) / 10000 < 2000 ? new WC7(data) : new WC6(data),
+        WC6.Size => ReadUInt32LittleEndian(data.Span[0x4C..]) / 10000 < 2000 ? new WC7(data) : new WC6(data),
         // WC6Full/WC7Full: 0x205 has 3 * 0x46 for Gen6, now only 2.
-        WC6Full.Size => data[0x205] == 0 ? new WC7Full(data).Gift : new WC6Full(data).Gift,
+        WC6Full.Size => data.Span[0x205] == 0 ? new WC7Full(data).Gift : new WC6Full(data).Gift,
         _ => null,
     };
 
@@ -101,11 +102,6 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
     }
 
     /// <summary>
-    /// Creates a deep copy of the <see cref="MysteryGift"/> object data.
-    /// </summary>
-    public abstract MysteryGift Clone();
-
-    /// <summary>
     /// Gets a friendly name for the underlying <see cref="MysteryGift"/> type.
     /// </summary>
     public string Type => GetType().Name;
@@ -124,6 +120,7 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
     public abstract ushort Species { get; set; }
     public abstract AbilityPermission Ability { get; }
     public abstract bool GiftUsed { get; set; }
+    public virtual int CardTitleIndex { get => -1; set { } }
     public abstract string CardTitle { get; set; }
     public abstract int CardID { get; set; }
 
@@ -132,25 +129,18 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
 
     public abstract bool IsEntity { get; set; }
     public virtual int Quantity { get => 1; set { } }
-    public virtual bool Empty => false;
+    public virtual bool IsEmpty => false;
 
-    public virtual string CardHeader => (CardID > 0 ? $"Card #: {CardID:0000}" : "N/A") + $" - {CardTitle.Replace('\u3000',' ').Trim()}";
+    public string CardHeader => (CardID > 0 ? $"Card #: {CardID:0000}" : "N/A") + $" - {CardTitle.Replace('\u3000',' ').Trim()}";
 
     // Search Properties
     public virtual Moveset Moves { get => default; set { } }
     public virtual bool HasFixedIVs => true;
     public virtual void GetIVs(Span<int> value) { }
     public virtual bool IsShiny => false;
-
-    public virtual Shiny Shiny
-    {
-        get => Shiny.Never;
-        init => throw new InvalidOperationException();
-    }
-
-    public virtual bool IsEgg { get => false; set { } }
-    public virtual int HeldItem { get => -1; set { } }
-    public virtual int AbilityType { get => -1; set { } }
+    public abstract Shiny Shiny { get; }
+    public abstract bool IsEgg { get; set; }
+    public abstract int HeldItem { get; set; }
     public abstract byte Gender { get; set; }
     public abstract byte Form { get; set; }
     public abstract uint ID32 { get; set; }
@@ -165,11 +155,7 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
     public abstract byte Ball { get; set; }
     public abstract ushort EggLocation { get; set; }
 
-    protected virtual bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = IsEgg ? EggLocation : pk is PB8 ? Locations.Default8bNone : 0;
-        return pk.EggLocation == expect;
-    }
+    protected virtual bool IsMatchEggLocationInternal(PKM pk) => this.IsMatchEggLocation(pk);
 
     public Ball FixedBall => (Ball)Ball;
 
@@ -178,6 +164,81 @@ public abstract class MysteryGift : IEncounterable, IMoveset, ITrainerID32, IFat
     public uint TrainerSID7 { get => this.GetTrainerSID7(); set => this.SetTrainerSID7(value); }
     public uint DisplayTID { get => this.GetDisplayTID(); set => this.SetDisplayTID(value); }
     public uint DisplaySID { get => this.GetDisplaySID(); set => this.SetDisplaySID(value); }
+
+    /// <summary>
+    /// Criteria-conscious application of IV templates to the given IV span, with the option for a fallback value if the criteria doesn't specify a value for a random IV slot.
+    /// </summary>
+    /// <param name="finalIVs">The span of IVs to apply the template to.</param>
+    /// <param name="criteria">The user-provided encounter criteria to consider.</param>
+    /// <param name="rnd">A random number generator for selecting random IVs.</param>
+    /// <param name="getFallback">A function to provide fallback values for random IVs.</param>
+    protected static void ApplyTemplateIVs(Span<int> finalIVs, in EncounterCriteria criteria, Random rnd, Func<int, int> getFallback)
+    {
+        Span<bool> random = stackalloc bool[6]; // template, not user request
+        int flawless = 0; // template flawless count, not necessarily the same as criteria flawless count
+        int currentFlawless = 0; // how many flawless IVs we've currently assigned, either from the template or criteria.
+
+        // Scan the template IVs and pre-determine any from criteria.
+        for (int i = 0; i < finalIVs.Length; i++)
+        {
+            var value = finalIVs[i];
+            if (value <= 31)
+            {
+                if (value == 31)
+                    currentFlawless++;
+
+                // IV is required by the template.
+                continue;
+            }
+
+            // Support for random IV indicators: 0xFC-0xFE for flawless count, 0xFF for fully random.
+            // I think this is only used on the HP IV (index 0), but whatever.
+            random[i] = true;
+            if (value is >= 0xFC and <= 0xFE)
+                flawless = value - 0xFB;
+
+            if (criteria.IsRandomIV(i, out var requested))
+                continue; // Unspecified random IV.
+
+            // User wants a specific value for this IV, so apply it and remove from random pool.
+            finalIVs[i] = requested;
+            if (requested == 31)
+                currentFlawless++;
+        }
+
+        // Sanity check: if the template wants more flawless IVs than the criteria wants, we can't fulfill that request.
+        // Pick random IVs to fill the gap up to the template's flawless count.
+        if (currentFlawless < flawless)
+        {
+            // Gather candidate IV slots that are random and not already 31.
+            Span<int> candidates = stackalloc int[6];
+            int candidateCount = 0;
+            for (int i = 0; i < finalIVs.Length; i++)
+            {
+                if (random[i] && finalIVs[i] != 31)
+                    candidates[candidateCount++] = i;
+            }
+
+            // Update random IV slots to 31 until we meet the template's flawless count or run out of candidates.
+            while (currentFlawless < flawless && candidateCount != 0)
+            {
+                int pick = rnd.Next(candidateCount);
+                int index = candidates[pick];
+                finalIVs[index] = 31;
+                currentFlawless++;
+                candidates[pick] = candidates[--candidateCount];
+            }
+        }
+
+        // Determine final IV values for any remaining random slots, using criteria if specified or falling back to the provided function if not.
+        for (int i = 0; i < finalIVs.Length; i++)
+        {
+            if (!random[i] || finalIVs[i] == 31)
+                continue;
+
+            finalIVs[i] = criteria.IsRandomIV(i, out var value) ? getFallback(i) : value;
+        }
+    }
 
     /// <summary>
     /// Checks if the <see cref="PKM"/> has the <see cref="move"/> in its current move list.

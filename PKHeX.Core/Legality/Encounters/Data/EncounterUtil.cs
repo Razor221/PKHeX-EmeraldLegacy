@@ -29,6 +29,32 @@ public static class EncounterUtil
         => BinLinkerAccessor.Get(Get(resource), ident);
 
     /// <summary>
+    /// Gets an index-able accessor for the specified resource.
+    /// </summary>
+    public static BinLinkerAccessor16 Get16([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident)
+        => BinLinkerAccessor16.Get(Get(resource), ident);
+
+    /// <summary>
+    /// Retrieves the localization index list for all requested strings for the <see cref="fileName"/>.
+    /// </summary>
+    /// <param name="fileName">Base file name</param>
+    /// <param name="maxLanguage">Max language ID (inclusive)</param>
+    /// <remarks>Ignores Korean Language.</remarks>
+    public static string[][] GetLanguageStrings([ConstantExpected] string fileName, [ConstantExpected(Min = 6)] int maxLanguage)
+    {
+        var result = new string[maxLanguage + 1][];
+        result[0] = result[6] = []; // 0 - None, 6 - None
+        for (int i = 1; i <= 5; i++)
+            result[i] = Text(fileName, i);
+        for (int i = 7; i <= maxLanguage; i++)
+            result[i] = Text(fileName, i);
+        return result;
+
+        static string[] Text([ConstantExpected] string fileName, int language)
+            => Util.GetStringList(fileName, ((LanguageID)language).GetLanguageCode());
+    }
+
+    /// <summary>
     /// Grabs the localized names for individual templates for all languages from the specified <see cref="index"/> of the <see cref="names"/> list.
     /// </summary>
     /// <param name="names">Arrays of strings grouped by language</param>
@@ -83,8 +109,75 @@ public static class EncounterUtil
     /// Gets a random DV16 value.
     /// </summary>
     /// <param name="rand">Random number generator to use</param>
+    /// <param name="isShiny">Optional Shiny flag to match</param>
+    /// <param name="type">Optional Hidden Power type to match</param>
     /// <returns>Value between 0 and 65535 (inclusive)</returns>
-    public static ushort GetRandomDVs(Random rand) => (ushort)rand.Next(ushort.MaxValue + 1);
+    public static ushort GetRandomDVs(Random rand, bool isShiny, sbyte type)
+    {
+        if (isShiny)
+        {
+            // If the DVs can be Shiny as well as match the Hidden Power type, return the Shiny DVs.
+            const ushort dv16 = 0x2AAA;
+            var modified = HiddenPower.SetTypeGB(type, dv16);
+            if (ShinyUtil.GetIsShinyGB(modified))
+                return modified;
+            // Fallback to a random DV if the Shiny DVs don't match the Hidden Power type.
+            // Requesting Hidden Power is more relevant for battle legality.
+        }
+        var result = (ushort)rand.Next(ushort.MaxValue + 1);
+        if (HiddenPower.IsInvalidType(type))
+            return result;
+
+        while (true)
+        {
+            if (HiddenPower.GetTypeGB(result) == type)
+                return result;
+            result = (ushort)rand.Next(ushort.MaxValue + 1);
+        }
+    }
+
+    /// <summary>
+    /// Generates a random Pokémon ID (PID) based on the provided trainer information, random number generator, and
+    /// shiny type.
+    /// </summary>
+    /// <remarks>The shiny type influences the XOR value applied during PID generation:
+    /// <list type="bullet">
+    /// <item><description><see cref="Shiny.AlwaysSquare"/> results in a square shiny PID.</description></item>
+    /// <item><description><see cref="Shiny.AlwaysStar"/> or <see cref="Shiny.Always"/> results in a star shiny PID.</description></item>
+    /// <item><description>Other shiny types result in a PID with a random XOR value within the valid range, but never shiny.</description></item>
+    /// </list>
+    /// The method ensures that the generated PID adheres to the shiny calculation rules based on the provided trainer's TID and SID.</remarks>
+    /// <typeparam name="T">The type of the trainer object, which must implement <see cref="ITrainerID32ReadOnly"/>.</typeparam>
+    /// <param name="tr">The trainer object containing the Trainer ID (TID) and Secret ID (SID) values used for PID generation.</param>
+    /// <param name="rnd">The random number generator used to produce random values for PID calculation.</param>
+    /// <param name="type">The shiny type that determines the XOR value used in PID generation.</param>
+    /// <returns>A 32-bit unsigned integer representing the generated Pokémon ID (PID).</returns>
+    public static uint GetRandomPID<T>(T tr, Random rnd, Shiny type) where T : ITrainerID32ReadOnly
+    {
+        uint pid = rnd.Rand32();
+        uint xorType = type switch
+        {
+            Shiny.Always => (uint)rnd.Next(0, 15 + 1),
+            Shiny.AlwaysStar => (uint)rnd.Next(1, 15),
+            Shiny.AlwaysSquare => 0,
+            _ => (uint)rnd.Next(16, ushort.MaxValue + 1),
+        };
+        return ShinyUtil.GetShinyPID(tr.TID16, tr.SID16, pid, xorType);
+    }
+
+    public static uint GetRandomPID<T>(T tr, Random rnd, Shiny encounterShiny, Shiny criteriaShiny) where T : ITrainerID32ReadOnly
+    {
+        // Determine actual shiny state to use
+        var shiny = DetermineFinalShinyState(encounterShiny, criteriaShiny);
+        return GetRandomPID(tr, rnd, shiny);
+    }
+
+    private static Shiny DetermineFinalShinyState(Shiny template, Shiny criteria) => template switch
+    {
+        Shiny.Always when criteria.IsShiny() => criteria, // OK to use
+        Shiny.Random => criteria, // Can be whatever the criteria is
+        _ => template, // Use the template shiny state
+    };
 
     /// <summary>
     /// Mashes the IVs into a DV16 value.
@@ -108,5 +201,26 @@ public static class EncounterUtil
     {
         var pt = version == GameVersion.YW ? PersonalTable.Y : PersonalTable.RB;
         return pt[species];
+    }
+
+    /// <summary>
+    /// Gets the expected current egg location value for a given entity state and original location value.
+    /// </summary>
+    /// <param name="pk">Current entity state</param>
+    /// <param name="loc">Location value that is expected to be used for the egg location</param>
+    /// <returns>Expected egg location value</returns>
+    internal static ushort GetExpectedEggLocation<T>(T pk, ushort loc) where T : PKM
+    {
+        if (pk is PB8)
+            return Locations8b.GetLocationLocal(loc);
+        return loc;
+    }
+
+    internal static bool IsMatchEggLocation<TEnc, TEntity>(this TEnc enc, TEntity pk)
+        where TEnc : ILocation
+        where TEntity : PKM
+    {
+        var loc = GetExpectedEggLocation(pk, enc.EggLocation);
+        return loc == pk.EggLocation;
     }
 }

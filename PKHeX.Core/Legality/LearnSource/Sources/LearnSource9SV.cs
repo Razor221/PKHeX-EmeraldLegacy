@@ -12,9 +12,9 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
 {
     public static readonly LearnSource9SV Instance = new();
     private static readonly PersonalTable9SV Personal = PersonalTable.SV;
-    private static readonly Learnset[] Learnsets = LearnsetReader.GetArray(BinLinkerAccessor.Get(Util.GetBinaryResource("lvlmove_sv.pkl"), "sv"u8));
-    private static readonly ushort[][] EggMoves = EggMoves9.GetArray(BinLinkerAccessor.Get(Util.GetBinaryResource("eggmove_sv.pkl"), "sv"u8));
-    private static readonly ushort[][] Reminder = EggMoves9.GetArray(BinLinkerAccessor.Get(Util.GetBinaryResource("reminder_sv.pkl"), "sv"u8));
+    private static readonly Learnset[] Learnsets = LearnsetReader.GetArray(BinLinkerAccessor16.Get(Util.GetBinaryResource("lvlmove_sv.pkl"), "sv"u8));
+    private static readonly MoveSource[] EggMoves = MoveSource.GetArray(BinLinkerAccessor16.Get(Util.GetBinaryResource("eggmove_sv.pkl"), "sv"u8));
+    private static readonly MoveSource[] Reminder = MoveSource.GetArray(BinLinkerAccessor16.Get(Util.GetBinaryResource("reminder_sv.pkl"), "sv"u8));
     private const int MaxSpecies = Legal.MaxSpeciesID_9;
     private const LearnEnvironment Game = SV;
 
@@ -34,8 +34,8 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         var index = Personal.GetFormIndex(species, form);
         if (index >= EggMoves.Length)
             return false;
-        var moves = EggMoves[index].AsSpan();
-        return moves.Contains(move);
+        var moves = EggMoves[index];
+        return moves.GetHasMove(move);
     }
 
     public ReadOnlySpan<ushort> GetEggMoves(ushort species, byte form)
@@ -43,7 +43,7 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         var index = Personal.GetFormIndex(species, form);
         if (index >= EggMoves.Length)
             return [];
-        return EggMoves[index];
+        return EggMoves[index].Moves;
     }
 
     public bool GetIsReminderMove(ushort species, byte form, ushort move)
@@ -51,8 +51,8 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         var index = Personal.GetFormIndex(species, form);
         if (index >= Reminder.Length)
             return false;
-        var moves = Reminder[index].AsSpan();
-        return moves.Contains(move);
+        var moves = Reminder[index];
+        return moves.GetHasMove(move);
     }
 
     public ReadOnlySpan<ushort> GetReminderMoves(ushort species, byte form)
@@ -60,7 +60,7 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         var index = Personal.GetFormIndex(species, form);
         if (index >= Reminder.Length)
             return [];
-        return Reminder[index];
+        return Reminder[index].Moves;
     }
 
     public MoveLearnInfo GetCanLearn(PKM pk, PersonalInfo9SV pi, EvoCriteria evo, ushort move, MoveSourceType types = MoveSourceType.All, LearnOption option = LearnOption.Current)
@@ -68,9 +68,8 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         if (types.HasFlag(MoveSourceType.LevelUp))
         {
             var learn = GetLearnset(evo.Species, evo.Form);
-            var level = learn.GetLevelLearnMove(move);
-            if (level != -1 && level <= evo.LevelMax)
-                return new(LevelUp, Game, (byte)level);
+            if (learn.TryGetLevelLearnMove(move, out var level) && level <= evo.LevelMax)
+                return new(LevelUp, Game, level);
         }
 
         if (types.HasFlag(MoveSourceType.SharedEggMove) && GetIsSharedEggMove(pi, move))
@@ -122,7 +121,10 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         return false;
     }
 
-    private static bool GetIsEnhancedTutor(EvoCriteria evo, ISpeciesForm current, ushort move, LearnOption option) => evo.Species switch
+    private static bool GetIsEnhancedTutor<T1, T2>(T1 evo, T2 current, ushort move, LearnOption option)
+        where T1 : ISpeciesForm
+        where T2 : ISpeciesForm
+        => evo.Species switch
     {
         (int)Species.Necrozma => move switch
         {
@@ -149,7 +151,7 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         return GetEggMoves(baseSpecies, baseForm).Contains(move);
     }
 
-    public void GetAllMoves(Span<bool> result, PKM pk, EvoCriteria evo, MoveSourceType types = MoveSourceType.All)
+    public void GetAllMoves(Span<bool> result, PKM _, EvoCriteria evo, MoveSourceType types = MoveSourceType.All)
     {
         if (!TryGetPersonal(evo.Species, evo.Form, out var pi))
             return;
@@ -184,11 +186,11 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         if (types.HasFlag(MoveSourceType.EnhancedTutor))
         {
             var species = evo.Species;
-            if (species is (int)Species.Rotom && pk.Form is not 0)
+            if (species is (int)Species.Rotom && evo.Form is not 0)
                 result[MoveTutor.GetRotomFormMove(evo.Form)] = true;
-            else if (species is (int)Species.Necrozma && pk.Form is 1) // Sun
+            else if (species is (int)Species.Necrozma && evo.Form is 1) // Sun
                 result[(int)Move.SunsteelStrike] = true;
-            else if (species is (int)Species.Necrozma && pk.Form is 2) // Moon
+            else if (species is (int)Species.Necrozma && evo.Form is 2) // Moon
                 result[(int)Move.MoongeistBeam] = true;
         }
     }
@@ -202,9 +204,8 @@ public sealed class LearnSource9SV : ILearnSource<PersonalInfo9SV>, IEggSource, 
         if (types.HasFlag(MoveSourceType.LevelUp))
         {
             var learn = GetLearnset(evo.Species, evo.Form);
-            var level = learn.GetLevelLearnMove(move);
-            if (level != -1)
-                return new(LevelUp, Game, (byte)level);
+            if (learn.TryGetLevelLearnMove(move, out var level))
+                return new(LevelUp, Game, level);
         }
 
         if (types.HasFlag(MoveSourceType.SharedEggMove) && GetIsSharedEggMove(pi, move))

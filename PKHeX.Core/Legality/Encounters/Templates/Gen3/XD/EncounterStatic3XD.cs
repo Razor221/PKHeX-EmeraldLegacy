@@ -1,3 +1,5 @@
+using static PKHeX.Core.RandomCorrelationRating;
+
 namespace PKHeX.Core;
 
 /// <summary>
@@ -12,17 +14,15 @@ public sealed record EncounterStatic3XD(ushort Species, byte Level)
     ushort ILocation.EggLocation => 0;
     ushort ILocation.Location => Location;
     public bool IsShiny => false;
-    private bool Gift => FixedBall == Ball.Poke;
     public Shiny Shiny => Shiny.Random;
     public AbilityPermission Ability => AbilityPermission.Any12;
-
-    public Ball FixedBall { get; init; }
-    public bool FatefulEncounter { get; init; }
+    public Ball FixedBall => Ball.Poke;
+    public bool FatefulEncounter => true;
+    public bool IsEgg => false;
+    public byte Form => 0;
 
     public required byte Location { get; init; }
-    public byte Form => 0;
-    public bool IsEgg => false;
-    public Moveset Moves { get; init; }
+    public required Moveset Moves { get; init; }
 
     public string Name => "Static Encounter";
     public string LongName => Name;
@@ -36,7 +36,7 @@ public sealed record EncounterStatic3XD(ushort Species, byte Level)
 
     public XK3 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage3((LanguageID)tr.Language);
         var pi = PersonalTable.E[Species];
         var pk = new XK3
         {
@@ -50,11 +50,11 @@ public sealed record EncounterStatic3XD(ushort Species, byte Level)
             Ball = (byte)(FixedBall != Ball.None ? FixedBall : Ball.Poke),
             FatefulEncounter = FatefulEncounter,
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = 0,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
 
         SetPINGA(pk, criteria, pi);
@@ -67,32 +67,37 @@ public sealed record EncounterStatic3XD(ushort Species, byte Level)
         return pk;
     }
 
-    private void SetPINGA(XK3 pk, EncounterCriteria criteria, PersonalInfo3 pi)
+    private void SetPINGA(XK3 pk, in EncounterCriteria criteria, PersonalInfo3 pi)
     {
         if (Species == (int)Core.Species.Eevee)
         {
-            if (MethodCXD.SetFromTrainerIDStarter(pk, criteria, pi, pk.TID16, pk.SID16))
-                return;
+            SetStarterPINGA(pk, criteria);
+            return;
         }
-        else
-        {
-            if (criteria.IsSpecifiedIVs() && MethodCXD.SetFromIVsCXD(pk, criteria, pi, noShiny: true))
-                return;
-        }
-        var gender = criteria.GetGender(pi);
-        var nature = criteria.GetNature();
-        var ability = criteria.GetAbilityFromNumber(Ability);
-        do
-        {
-            PIDGenerator.SetRandomWildPID4(pk, nature, ability, gender, PIDType.CXD);
-        } while (Shiny == Shiny.Never && pk.IsShiny);
+
+        if (criteria.IsSpecifiedIVsAll() && MethodCXD.SetFromIVs(pk, criteria, pi, noShiny: false))
+            return;
+        MethodCXD.SetRandom(pk, criteria, pi, noShiny: false, Util.Rand32());
     }
+
+    private static void SetStarterPINGA(XK3 pk, in EncounterCriteria criteria)
+    {
+        // Prefer IVs if requested, rather than Trainer Matching.
+        if (criteria.IsSpecifiedIVsAll() && MethodCXD.SetStarterFromIVs(pk, criteria))
+            return;
+        // Fall back to Trainer ID matching.
+        if (MethodCXD.SetStarterFromTrainerID(pk, criteria, pk.TID16, pk.SID16))
+            return;
+        // Fall back to generating a random PID.
+        MethodCXD.SetStarterRandom(pk, criteria, Util.Rand32());
+    }
+
     #endregion
 
     #region Matching
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -108,15 +113,6 @@ public sealed record EncounterStatic3XD(ushort Species, byte Level)
         if (IsMatchPartial(pk))
             return EncounterMatchRating.PartialMatch;
         return EncounterMatchRating.Match;
-    }
-
-    private static bool IsMatchEggLocation(PKM pk)
-    {
-        if (pk.Format == 3)
-            return true;
-
-        var expect = pk is PB8 ? Locations.Default8bNone : 0;
-        return pk.EggLocation == expect;
     }
 
     private bool IsMatchLevel(PKM pk, EvoCriteria evo)
@@ -137,17 +133,19 @@ public sealed record EncounterStatic3XD(ushort Species, byte Level)
 
     private bool IsMatchPartial(PKM pk)
     {
-        if (Gift && pk.Ball != (byte)FixedBall)
-            return true;
-        return false;
+        return pk.Ball != (byte)FixedBall;
     }
     #endregion
 
-    public bool IsCompatible(PIDType type, PKM pk)
+    public RandomCorrelationRating IsCompatible(PIDType type, PKM pk)
     {
         if (type is PIDType.CXD)
-            return true;
-        return type is PIDType.CXDAnti && FatefulEncounter;
+            return Match;
+        if (type is PIDType.CXDAnti && FatefulEncounter)
+            return Match;
+        if (type is PIDType.CXD_ColoStarter && pk.Species is (ushort)Core.Species.Umbreon)
+            return Match; // Can be satisfying the Colosseum correlation too (only disqualified by Fateful Encounter later)
+        return Mismatch;
     }
 
     public PIDType GetSuggestedCorrelation() => PIDType.CXD;

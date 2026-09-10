@@ -9,7 +9,7 @@ PKHeX
 * GameCube 宝可梦游戏存档包含 GameCube 记忆存档 (\*.raw, \*.bin)
 * 单个宝可梦实体文件 (.pk\*, \*.ck3, \*.xk3, \*.pb7, \*.sk2, \*.bk4, \*.rk4)
 * 神秘礼物文件 (\*.pgt, \*.pcd, \*.pgf, .wc\*) 并转换为 .pk\*
-* 导入 Go Park存档 (\*.gp1) 并转换为 .pb7
+* 导入 GO Park存档 (\*.gp1) 并转换为 .pb7
 * 从已破解的 3DS 对战视频中导入队伍
 * 支持宝可梦在不同世代的间转移，并转换文件格式
 
@@ -24,13 +24,13 @@ PKHeX 所读取存档文件必须是未经主机唯一密钥加密，因此请�
 
 ## 截图
 
-![主介面](https://i.imgur.com/SfskT2Q.png)
+![主介面](https://i.imgur.com/MPN4Hk9.png)
 
 ## 构建
 
-PKHeX 是 Windows 窗口应用程序，依赖于 [.NET 9.0](https://dotnet.microsoft.com/download/dotnet/9.0)。
+PKHeX 是 Windows 窗口应用程序，依赖于 [.NET 10.0](https://dotnet.microsoft.com/download/dotnet/10.0)。
 
-可以使用任何支持 C# 13 的编译器生成可执行文件。
+可以使用任何支持 C# 14 的编译器生成可执行文件。
 
 ### 构建配置
 

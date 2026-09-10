@@ -32,7 +32,7 @@ public abstract class PersonalInfo : IPersonalInfo
     public abstract int GetAbilityAtIndex(int abilityIndex);
     public abstract int AbilityCount { get; }
     public abstract int EscapeRate { get; set; }
-    public virtual byte FormCount { get; set; } = 1;
+    public virtual byte FormCount { get => 1; set { } }
     public virtual int FormStatsIndex { get; set; }
     public abstract int BaseEXP { get; set; }
     public abstract int Color { get; set; }
@@ -73,7 +73,6 @@ public abstract class PersonalInfo : IPersonalInfo
     /// <summary>
     /// Checks to see if the <see cref="PKM.Form"/> is valid within the <see cref="FormCount"/>
     /// </summary>
-    /// <param name="form"></param>
     public bool IsFormWithinRange(byte form)
     {
         if (form == 0)

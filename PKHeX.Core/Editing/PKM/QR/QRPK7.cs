@@ -14,16 +14,16 @@ public sealed class QRPK7(Memory<byte> Raw) : IEncounterInfo
     public bool IsEgg => false;
     public byte LevelMin => Level;
     public byte LevelMax => Level;
-    public byte Generation => Version.GetGeneration();
+    public byte Generation => Version.Generation;
     public EntityContext Context => EntityContext.Gen7;
     public bool IsShiny => false;
     public ushort Location => 0;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public AbilityPermission Ability => (AbilityPermission)AbilityIndex;
     public Ball FixedBall => (Ball)Ball;
     public Shiny Shiny => Shiny.Never;
 
-    public uint EncryptionConstant => ReadUInt32LittleEndian(Data[..]);
+    public uint EncryptionConstant => ReadUInt32LittleEndian(Data);
     public byte HyperTrainFlags => Data[4];
     public byte Unk_5 => Data[5];
     public byte Unk_6 => Data[6];

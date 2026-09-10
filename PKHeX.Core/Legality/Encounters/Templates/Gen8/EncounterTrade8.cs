@@ -6,7 +6,9 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 8 Trade Encounter
 /// </summary>
-public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTrainer, IFixedNickname, IEncounterConvertible<PK8>, IDynamaxLevelReadOnly, IRelearn, IMemoryOTReadOnly, IFlawlessIVCount, IFixedGender, IFixedNature, IFixedIVSet
+public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IEncounterConvertible<PK8>,
+    IFixedTrainer, IFixedNickname, IDynamaxLevelReadOnly, IRelearn, IMemoryOTReadOnly, IFlawlessIVCount,
+    IFixedGender, IFixedNature, IFixedIVSet, ITrainerID32ReadOnly
 {
     public byte Generation => 8;
     public EntityContext Context => EntityContext.Gen8;
@@ -24,15 +26,17 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
     public bool IsEgg => false;
     public Ball FixedBall => Ball.Poke;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsFixedTrainer => true;
     public bool IsFixedNickname { get; }
 
-    private string[] TrainerNames { get; }
-    private string[] Nicknames { get; }
+    private readonly ReadOnlyMemory<string> TrainerNames;
+    private readonly ReadOnlyMemory<string> Nicknames;
 
     public Nature Nature { get; init; } // always set by either constructor or initializer
     public required uint ID32 { get; init; }
+    public ushort TID16 => (ushort)ID32;
+    public ushort SID16 => (ushort)(ID32 >> 16);
     public required AbilityPermission Ability { get; init; }
     public required byte Gender { get; init; }
     public required byte OTGender { get; init; }
@@ -51,9 +55,9 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
     public byte LevelMin => Level;
     public byte LevelMax => Level;
 
-    public EncounterTrade8(ReadOnlySpan<string[]> names, byte index, GameVersion game, ushort species, byte level, byte memory, ushort arg, byte feel, byte intensity)
+    public EncounterTrade8(ReadOnlySpan<string[]> names, byte index, GameVersion version, ushort species, byte level, byte memory, ushort arg, byte feel, byte intensity)
     {
-        Version = game;
+        Version = version;
         Nicknames = EncounterUtil.GetNamesForLanguage(names, index);
         TrainerNames = EncounterUtil.GetNamesForLanguage(names, (uint)(index + (names[1].Length >> 1)));
         Species = species;
@@ -68,10 +72,10 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
     }
 
     [SetsRequiredMembers]
-    public EncounterTrade8(string[] trainerNames, GameVersion game, ushort species, byte level, byte memory, ushort arg, byte feel, byte intensity)
+    public EncounterTrade8(ReadOnlyMemory<string> trainerNames, GameVersion version, ushort species, byte level, byte memory, ushort arg, byte feel, byte intensity)
     {
-        Version = game;
-        Nicknames = [];
+        Version = version;
+        Nicknames = ReadOnlyMemory<string>.Empty;
         TrainerNames = trainerNames;
         Species = species;
         Level = level;
@@ -95,8 +99,8 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
 
     public PK8 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.SWSH[Species, Form];
         var rnd = Util.Rand;
         var pk = new PK8
@@ -114,9 +118,9 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
 
             ID32 = ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = OTGender,
-            OriginalTrainerName = TrainerNames[lang],
+            OriginalTrainerName = TrainerNames.Span[language],
 
             OriginalTrainerMemory = OriginalTrainerMemory,
             OriginalTrainerMemoryIntensity = OriginalTrainerMemoryIntensity,
@@ -125,7 +129,7 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
             OriginalTrainerFriendship = pi.BaseFriendship,
 
             IsNicknamed = IsFixedNickname,
-            Nickname = IsFixedNickname ? Nicknames[lang] : SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = IsFixedNickname ? Nicknames.Span[language] : SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             DynamaxLevel = DynamaxLevel,
             HandlingTrainerName = tr.OT,
             HandlingTrainerGender = tr.Gender,
@@ -145,12 +149,12 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
         return pk;
     }
 
-    private void SetPINGA(PK8 pk, EncounterCriteria criteria, PersonalInfo8SWSH pi)
+    private void SetPINGA(PK8 pk, in EncounterCriteria criteria, PersonalInfo8SWSH pi)
     {
         var gender = criteria.GetGender(Gender, pi);
         var nature = criteria.GetNature(Nature);
         int ability = criteria.GetAbilityFromNumber(Ability);
-        pk.Nature = pk.StatNature = nature;
+        pk.Nature = pk.StatAlignment = nature;
         pk.Gender = gender;
         pk.RefreshAbility(ability);
         if (IVs.IsSpecified)
@@ -163,9 +167,9 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
 
     #region Matching
 
-    public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => (uint)language < TrainerNames.Length && trainer.SequenceEqual(TrainerNames[language]);
-    public bool IsNicknameMatch(PKM pk, ReadOnlySpan<char> nickname, int language) => (uint)language < Nicknames.Length && nickname.SequenceEqual(Nicknames[language]);
-    public string GetNickname(int language) => (uint)language < Nicknames.Length ? Nicknames[language] : Nicknames[0];
+    public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => (uint)language < TrainerNames.Length && trainer.SequenceEqual(TrainerNames.Span[language]);
+    public bool IsNicknameMatch(PKM pk, ReadOnlySpan<char> nickname, int language) => (uint)language < Nicknames.Length && nickname.SequenceEqual(Nicknames.Span[language]);
+    public string GetNickname(int language) => Nicknames.Span[(uint)language < Nicknames.Length ? language : 0];
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
@@ -188,24 +192,16 @@ public sealed record EncounterTrade8 : IEncounterable, IEncounterMatch, IFixedTr
             return false;
         if (pk.OriginalTrainerGender != OTGender)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         return true;
-    }
-
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = EggLocation;
-        if (pk is PB8)
-            expect = Locations.Default8bNone;
-        return pk.EggLocation == expect;
     }
 
     private bool IsMatchNatureGenderShiny(PKM pk)
     {
         if (!Shiny.IsValid(pk))
             return false;
-        if (Nature != Nature.Random && pk.Nature != Nature)
+        if (Nature.IsFixed && pk.Nature != Nature)
             return false;
         if (Gender != FixedGenderUtil.GenderRandom && pk.Gender != Gender)
             return false;

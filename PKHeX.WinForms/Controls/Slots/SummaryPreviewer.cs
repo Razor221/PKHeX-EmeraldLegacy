@@ -16,7 +16,7 @@ public sealed class SummaryPreviewer
     private CancellationTokenSource _source = new();
     private static HoverSettings Settings => Main.Settings.Hover;
 
-    public void Show(Control pb, PKM pk)
+    public void Show(Control pb, PKM pk, StorageSlotType type = StorageSlotType.None)
     {
         if (pk.Species == 0)
         {
@@ -24,29 +24,96 @@ public sealed class SummaryPreviewer
             return;
         }
 
+        var programLanguage = Language.GetLanguageValue(Main.Settings.Startup.Language);
+        var cfg = Main.Settings.BattleTemplate;
+        var settings = cfg.Hover.GetSettings(programLanguage, pk.Context);
+        var localize = LegalityLocalizationSet.GetLocalization(programLanguage);
+        var la = new LegalityAnalysis(pk, type);
+        var ctx = LegalityLocalizationContext.Create(la, localize);
+
         if (Settings.HoverSlotShowPreview && Control.ModifierKeys != Keys.Alt)
-            UpdatePreview(pb, pk);
+        {
+            UpdatePreview(pb, pk, settings, ctx);
+        }
         else if (Settings.HoverSlotShowText)
-            ShowSet.SetToolTip(pb, GetPreviewText(pk, new LegalityAnalysis(pk)));
+        {
+            if (!settings.Order.Contains(BattleTemplateToken.FirstLine))
+            {
+                var temp = new BattleTemplateToken[settings.Order.Length + 1];
+                settings.Order.CopyTo(temp.AsSpan(1));
+                temp[0] = BattleTemplateToken.FirstLine;
+                settings = settings with { Order = temp };
+            }
+            var text = GetPreviewText(pk, settings);
+            PokePreview.TryAppendOtherStats(pk, ref text, settings);
+            if (Settings.HoverSlotShowEncounter)
+                text = AppendEncounterInfo(ctx, text);
+            ShowSet.SetToolTip(pb, text);
+        }
+
         if (Settings.HoverSlotPlayCry)
             Cry.PlayCry(pk, pk.Context);
     }
 
-    private void UpdatePreview(Control pb, PKM pk)
+    private void UpdatePreview(Control pb, PKM pk, in BattleTemplateExportSettings settings, in LegalityLocalizationContext ctx)
     {
         _source.Cancel();
+        _source.Dispose(); // Properly dispose the previous CancellationTokenSource
         _source = new();
         UpdatePreviewPosition(new());
-        Previewer.Populate(pk);
-        Previewer.Show();
+        Previewer.Populate(pk, settings, ctx);
+
+        SetWindowState(Previewer, true);
+        bool showFirst = !_isFirstShown;
+        if (showFirst)
+            _isFirstShown = true;
     }
+
+    private static void SetWindowState(Form frm, bool visible)
+    {
+        try
+        {
+            if (!frm.IsHandleCreated || frm.IsDisposed)
+                return;
+
+            const int SW_SHOWNOACTIVATE = 4;
+            const int HWND_TOPMOST = -1;
+            const uint SWP_NOMOVE = 0x0002;
+            const uint SWP_NOSIZE = 0x0001;
+            const uint SWP_NOACTIVATE = 0x0010;
+            const uint SWP_SHOWWINDOW = 0x0040;
+            const uint SWP_NOOWNERZORDER = 0x0200;
+
+            if (visible)
+            {
+                ShowWindowAsync(frm.Handle, SW_SHOWNOACTIVATE);
+                SetWindowPos(frm.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER);
+            }
+            else
+            {
+                ShowWindowAsync(frm.Handle, 0);
+            }
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            static extern bool ShowWindowAsync(nint hWnd, int nCmdShow);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+        }
+        catch
+        {
+            // error handling
+        }
+    }
+
+    private bool _isFirstShown;
 
     public void UpdatePreviewPosition(Point location)
     {
         var cLoc = Cursor.Position;
         var shift = Settings.PreviewCursorShift;
         cLoc.Offset(shift);
-        Previewer.Location = cLoc;
+        Previewer.MoveForm(cLoc.X, cLoc.Y);
     }
 
     public void Show(Control pb, IEncounterInfo enc)
@@ -65,34 +132,91 @@ public sealed class SummaryPreviewer
 
     public void Clear()
     {
-        var src = _source;
-        Task.Run(async () =>
+        try
         {
-            if (!Previewer.IsHandleCreated)
-                return; // not shown ever
+            var token = _source.Token; // did the user move to another slot in time?
+            var noToken = CancellationToken.None; // don't throw task canceled exceptions
+            Task.Run(async () =>
+            {
+                if (!Previewer.IsHandleCreated || !_isFirstShown)
+                    return; // not shown ever
 
-            // Give a little bit of fade-out delay
-            await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
-            if (!src.IsCancellationRequested)
-                Previewer.Invoke(Previewer.Hide);
-        }, src.Token);
+                // Give a little bit of delay before hiding, assuming user is moving between slots. If they enter another, we'll cancel.
+
+                await Task.Delay(50, noToken).ConfigureAwait(false);
+                if (!token.IsCancellationRequested)
+                    await Previewer.InvokeAsync(() => SetWindowState(Previewer, false), noToken); // hide
+            }, noToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Ignore.
+        }
         ShowSet.RemoveAll();
         Cry.Stop();
     }
 
-    public static string GetPreviewText(PKM pk, LegalityAnalysis la)
+    public static string GetPreviewText(PKM pk, BattleTemplateExportSettings settings) => ShowdownParsing.GetLocalizedPreviewText(pk, settings);
+
+    public static string AppendEncounterInfo(LegalityLocalizationContext la, string text)
     {
-        var text = ShowdownParsing.GetLocalizedPreviewText(pk, Main.Settings.Startup.Language);
-        if (!Main.Settings.Hover.HoverSlotShowEncounter)
-            return text;
-        var result = new List<string> { text, string.Empty };
+        var result = new List<string>(8);
+        if (text.Length != 0) // add a blank line between the set and the encounter info if isn't already a blank line
+        {
+            result.Add(text);
+            result.Add(string.Empty);
+        }
         LegalityFormatting.AddEncounterInfo(la, result);
         return string.Join(Environment.NewLine, result);
     }
 
     private static string GetPreviewText(IEncounterInfo enc, bool verbose = false)
     {
-        var lines = enc.GetTextLines(GameInfo.Strings, verbose);
+        var lines = enc.GetTextLines(verbose, Main.CurrentLanguage);
         return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string AppendLegalityHint(in LegalityLocalizationContext la, string line)
+    {
+        // Get the first illegal check result, and append the localization of it as the hint.
+        // If all legal, return the input string unchanged.
+        var analysis = la.Analysis;
+        if (analysis.Valid)
+            return line;
+
+        foreach (var chk in analysis.Results)
+        {
+            if (chk.Valid)
+                continue;
+            var hint = la.Humanize(chk, verbose: true);
+            return Join(line, hint);
+        }
+
+        for (var i = 0; i < analysis.Info.Moves.Length; i++)
+        {
+            var chk = analysis.Info.Moves[i];
+            if (chk.Valid)
+                continue;
+            var hint = la.FormatMove(chk, i + 1, la.Analysis.Info.Entity.Context);
+            return Join(line, hint);
+        }
+
+        for (var i = 0; i < analysis.Info.Relearn.Length; i++)
+        {
+            var chk = analysis.Info.Relearn[i];
+            if (chk.Valid)
+                continue;
+            var hint = la.FormatMove(chk, i + 1, la.Analysis.Info.Entity.Context);
+            return Join(line, hint);
+        }
+
+        return line;
+
+        static string Join(string line, string hint)
+        {
+            if (hint.Length > 67)
+                hint = hint[..67] + "...";
+            return string.IsNullOrEmpty(line) ? hint : $"{line}{Environment.NewLine}{hint}";
+        }
     }
 }

@@ -8,10 +8,10 @@ public sealed record EncounterStatic5(GameVersion Version)
 {
     public byte Generation => 5;
     public EntityContext Context => EntityContext.Gen5;
-    public bool Roaming { get; init; }
+    public bool IsRoaming { get; init; }
     ushort ILocation.Location => Location;
     ushort ILocation.EggLocation => EggLocation;
-    public bool IsShiny => false;
+    public bool IsShiny => Shiny == Shiny.Always;
     public bool IsEgg => EggLocation != 0;
     private bool Gift => FixedBall == Ball.Poke;
 
@@ -30,7 +30,7 @@ public sealed record EncounterStatic5(GameVersion Version)
     public string LongName => Name;
     public byte LevelMin => Level;
     public byte LevelMax => Level;
-    public bool IsWildCorrelationPID => !Roaming && Shiny == Shiny.Random && Species != (int)Core.Species.Crustle && !Gift && Ability != AbilityPermission.OnlyHidden;
+    public bool IsWildCorrelationPID => !IsRoaming && Shiny == Shiny.Random && !Gift && Ability != AbilityPermission.OnlyHidden;
 
     #region Generating
 
@@ -40,8 +40,8 @@ public sealed record EncounterStatic5(GameVersion Version)
 
     public PK5 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.B2W2[Species];
         var pk = new PK5
         {
@@ -55,13 +55,13 @@ public sealed record EncounterStatic5(GameVersion Version)
 
             ID32 = tr.ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = tr.Gender,
             OriginalTrainerName = tr.OT,
 
             OriginalTrainerFriendship = pi.BaseFriendship,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
 
         if (IsEgg)
@@ -81,44 +81,16 @@ public sealed record EncounterStatic5(GameVersion Version)
         return pk;
     }
 
-    private void SetPINGA(PK5 pk, EncounterCriteria criteria, PersonalInfo5B2W2 pi)
+    private void SetPINGA(PK5 pk, in EncounterCriteria criteria, PersonalInfo5B2W2 pi)
     {
-        var gender = criteria.GetGender(Gender, pi);
-        var nature = criteria.GetNature();
-        var ability = criteria.GetAbilityFromNumber(Ability);
-        var type = Shiny == Shiny.Always ? PIDType.G5MGShiny : PIDType.None;
-        PIDGenerator.SetRandomWildPID5(pk, nature, ability, gender, type);
+        var seed = Util.Rand.Rand64();
+        var gr = pi.Gender;
+        MonochromeRNG.Generate(pk, criteria, gr, seed, IsWildCorrelationPID, Shiny, Ability, Gender);
+
+        pk.Nature = criteria.GetNature();
+        var abilityIndex = Ability == AbilityPermission.OnlyHidden ? 2 : (int)((pk.PID >> 16) & 1);
+        pk.RefreshAbility(abilityIndex);
         criteria.SetRandomIVs(pk);
-        if (Shiny == Shiny.Always)
-            return;
-        if (pk.IsShiny)
-        {
-            if ((Shiny == Shiny.Random && !criteria.Shiny.IsShiny()) || Shiny == Shiny.Never)
-            {
-                var pid = pk.PID;
-                pid ^= 0x1000_0000;
-                var result = (pid & 1) ^ (pid >> 31) ^ (pk.TID16 & 1) ^ (pk.SID16 & 1);
-                if (result == 1)
-                    pid ^= 1;
-                pk.PID = pid;
-            }
-        }
-        else
-        {
-            if (Shiny == Shiny.Random && criteria.Shiny.IsShiny())
-            {
-                var pid = pk.PID;
-                var low = ((pid >> 16) & 1) | (pid & 0xFFFE);
-                uint idx = (uint)pk.TID16 ^ pk.SID16;
-                if ((idx & 1) == 1)
-                    low ^= 1;
-                pid = ((low ^ idx) << 16) | low;
-                var result = (pid & 1) ^ (pid >> 31) ^ (pk.TID16 & 1) ^ (pk.SID16 & 1);
-                if (result == 1)
-                    pid ^= 1;
-                pk.PID = pid;
-            }
-        }
     }
 
     #endregion
@@ -133,7 +105,7 @@ public sealed record EncounterStatic5(GameVersion Version)
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
+        if (!IsMatchEggLocationInternal(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -162,30 +134,26 @@ public sealed record EncounterStatic5(GameVersion Version)
     {
         var met = pk.MetLocation;
         if (IsEgg)
-            return true;
-        if (!Roaming)
+            return !pk.IsEgg || IsLocationAsEgg(met, Location);
+        if (!IsRoaming)
             return met == Location;
         return IsRoamerMet(met);
     }
 
-    private bool IsMatchEggLocation(PKM pk)
+    // spin trade sets another trade location ID
+    private static bool IsLocationAsEgg(ushort loc, ushort expect) => loc == expect || loc is (Locations.LinkTrade5 or Locations.LinkTrade5NPC);
+
+    private bool IsMatchEggLocationInternal(PKM pk)
     {
         if (!IsEgg)
-        {
-            var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-            return pk.EggLocation == expect;
-        }
+            return this.IsMatchEggLocation(pk);
 
         var eggLoc = pk.EggLocation;
         if (!pk.IsEgg) // hatched
-            return eggLoc == EggLocation || eggLoc == Locations.LinkTrade5;
+            return IsLocationAsEgg(eggLoc, EggLocation);
 
         // Unhatched:
-        if (eggLoc != EggLocation)
-            return false;
-        if (pk.MetLocation is not (0 or Locations.LinkTrade5))
-            return false;
-        return true;
+        return eggLoc == EggLocation;
     }
 
     // 25,26,27,28, // Route 12, 13, 14, 15 Night latter half

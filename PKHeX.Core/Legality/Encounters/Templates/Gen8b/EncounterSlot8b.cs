@@ -4,18 +4,25 @@ using static PKHeX.Core.SlotType8b;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Encounter Slot found in <see cref="GameVersion.BDSP"/>.
+/// Encounter Slot found in <see cref="EntityContext.Gen8b"/>.
 /// </summary>
 public sealed record EncounterSlot8b(EncounterArea8b Parent, ushort Species, byte Form, byte LevelMin, byte LevelMax)
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PB8>
+    : IEncounterable, IEncounterMatch, IEncounterConvertible<PB8>, ISingleMoveBonus
 {
     public byte Generation => 8;
     public EntityContext Context => EntityContext.Gen8b;
     public bool IsEgg => false;
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsUnderground => Locations8b.IsUnderground(Parent.Location);
+
+    /// <summary>
+    /// Each Pokémon also has one of their Egg Moves when you catch them in the Underground, provided they have any Egg Moves to begin with.
+    /// </summary>
+    public bool IsMoveBonusPossible => IsUnderground;
+    public bool IsMoveBonusRequired => true;
+
     public bool IsMarsh => Locations8b.IsMarsh(Parent.Location);
     public Ball FixedBall => GetRequiredBall();
     private Ball GetRequiredBall(Ball fallback = Ball.None) => IsMarsh ? Ball.Safari : fallback;
@@ -26,7 +33,7 @@ public sealed record EncounterSlot8b(EncounterArea8b Parent, ushort Species, byt
     public ushort Location => Parent.Location;
     public SlotType8b Type => Parent.Type;
 
-    public bool CanUseRadar => Type is Grass && !IsUnderground && !IsMarsh && CanUseRadarOverworld(Location);
+    public bool CanUseRadar => Type is Grass && !IsMoveBonusPossible && !IsMarsh && CanUseRadarOverworld(Location);
 
     private static bool CanUseRadarOverworld(ushort location) => location switch
     {
@@ -65,7 +72,7 @@ public sealed record EncounterSlot8b(EncounterArea8b Parent, ushort Species, byt
     public PB8 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PB8 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var pi = PersonalTable.BDSP[Species, Form];
         var pk = new PB8
         {
@@ -78,28 +85,28 @@ public sealed record EncounterSlot8b(EncounterArea8b Parent, ushort Species, byt
             MetDate = EncounterDate.GetDateSwitch(),
             Ball = (byte)GetRequiredBall(Ball.Poke),
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             OriginalTrainerFriendship = pi.BaseFriendship,
         };
         SetPINGA(pk, criteria, pi);
         EncounterUtil.SetEncounterMoves(pk, Version, LevelMin);
-        if (IsUnderground && GetBaseEggMove(out var move1, pi))
+        if (IsMoveBonusPossible && TryGetRandomMoveBonus(out var move1))
             pk.RelearnMove1 = move1;
         pk.ResetPartyStats();
         return pk;
     }
 
-    private void SetPINGA(PB8 pk, EncounterCriteria criteria, PersonalInfo8BDSP pi)
+    private void SetPINGA(PB8 pk, in EncounterCriteria criteria, PersonalInfo8BDSP pi)
     {
         var rnd = Util.Rand;
-        pk.PID = rnd.Rand32();
+        pk.PID = EncounterUtil.GetRandomPID(pk, rnd, criteria.Shiny);
         pk.EncryptionConstant = rnd.Rand32();
         criteria.SetRandomIVs(pk);
-        pk.Nature = pk.StatNature = criteria.GetNature();
+        pk.Nature = pk.StatAlignment = criteria.GetNature();
         pk.Gender = criteria.GetGender(pi);
         pk.RefreshAbility(criteria.GetAbilityFromNumber(Ability));
 
@@ -107,12 +114,17 @@ public sealed record EncounterSlot8b(EncounterArea8b Parent, ushort Species, byt
         pk.WeightScalar = PokeSizeUtil.GetRandomScalar(rnd);
     }
 
-    public bool GetBaseEggMove(out ushort move) => GetBaseEggMove(out move, PersonalTable.BDSP[Species, Form]);
-
-    private static bool GetBaseEggMove(out ushort move, PersonalInfo8BDSP pi)
+    public ReadOnlySpan<ushort> GetMoveBonusPossible()
     {
-        var species = pi.HatchSpecies;
-        var baseEgg = LearnSource8BDSP.Instance.GetEggMoves(species, 0);
+        var et = PersonalTable.BDSP;
+        var sf = et.GetFormEntry(Species, Form);
+        var species = sf.HatchSpecies;
+        return LearnSource8BDSP.Instance.GetEggMoves(species, 0);
+    }
+
+    public bool TryGetRandomMoveBonus(out ushort move)
+    {
+        var baseEgg = GetMoveBonusPossible();
         if (baseEgg.Length == 0)
         {
             move = 0;
@@ -176,15 +188,10 @@ public sealed record EncounterSlot8b(EncounterArea8b Parent, ushort Species, byt
         _ => false,
     };
 
-    public bool CanBeUndergroundMove(ushort move)
+    public bool IsMoveBonus(ushort move)
     {
-        var et = PersonalTable.BDSP;
-        var sf = et.GetFormEntry(Species, Form);
-        var species = sf.HatchSpecies;
-        var baseEgg = LearnSource8BDSP.Instance.GetEggMoves(species, 0);
-        if (baseEgg.Length == 0)
-            return move == 0;
-        return baseEgg.Contains(move);
+        var moves = GetMoveBonusPossible();
+        return (moves.Length == 0 && move == 0) || moves.Contains(move);
     }
     #endregion
 }

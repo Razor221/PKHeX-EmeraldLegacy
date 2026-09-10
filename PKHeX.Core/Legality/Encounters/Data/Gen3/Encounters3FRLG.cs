@@ -15,16 +15,17 @@ internal static class Encounters3FRLG
     internal static readonly EncounterArea3[] SlotsFR = GetRegular("fr", "fr"u8, FR);
     internal static readonly EncounterArea3[] SlotsLG = GetRegular("lg", "lg"u8, LG);
 
-    private static EncounterArea3[] GetRegular([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident, [ConstantExpected] GameVersion game) => EncounterArea3.GetAreas(Get(resource, ident), game);
+    private static EncounterArea3[] GetRegular([ConstantExpected] string resource, [Length(2, 2)] ReadOnlySpan<byte> ident, [ConstantExpected] GameVersion version)
+        => EncounterArea3.GetAreas(Get(resource, ident), version);
 
     private const string tradeFRLG = "tradefrlg";
-    private static readonly string[][] TradeNames = Util.GetLanguageStrings7(tradeFRLG);
+    private static readonly string[][] TradeNames = GetLanguageStrings(tradeFRLG, 7);
 
     public static readonly EncounterStatic3[] StaticFRLG =
     [
-        new(243, 50, FRLG) { Roaming = true, Location = 101 }, // Raikou
-        new(244, 50, FRLG) { Roaming = true, Location = 101 }, // Entei
-        new(245, 50, FRLG) { Roaming = true, Location = 101 }, // Suicune
+        new(243, 50, FRLG) { IsRoaming = true, Location = 101 }, // Raikou
+        new(244, 50, FRLG) { IsRoaming = true, Location = 101 }, // Entei
+        new(245, 50, FRLG) { IsRoaming = true, Location = 101 }, // Suicune
 
         // Starters @ Pallet Town
         new(001, 05, FRLG) { FixedBall = Ball.Poke, Location = 088 }, // Bulbasaur
@@ -39,7 +40,7 @@ internal static class Encounters3FRLG
         // Gift
         new(106, 25, FRLG) { FixedBall = Ball.Poke, Location = 098 }, // Hitmonlee @ Saffron City
         new(107, 25, FRLG) { FixedBall = Ball.Poke, Location = 098 }, // Hitmonchan @ Saffron City
-        new(129, 05, FRLG) { FixedBall = Ball.Poke, Location = 099 }, // Magikarp @ Route 4
+        new(129, 05, FRLG) { FixedBall = Ball.Poke, Location = 104 }, // Magikarp @ Route 4 (not Pokémon Center)
         new(131, 25, FRLG) { FixedBall = Ball.Poke, Location = 134 }, // Lapras @ Silph Co.
         new(133, 25, FRLG) { FixedBall = Ball.Poke, Location = 094 }, // Eevee @ Celadon City
         new(175, 05, FRLG) { FixedBall = Ball.Poke, Location = 253, IsEgg = true, Moves = new(045,204,118) }, // Togepi Egg
@@ -70,24 +71,19 @@ internal static class Encounters3FRLG
         new(147, 18, FR) { FixedBall = Ball.Poke, Location = 94 }, // Dratini
         new(137, 26, FR) { FixedBall = Ball.Poke, Location = 94 }, // Porygon
 
-        new(386, 30, FR  ) { Location = 187, FatefulEncounter = true, Form = 1 }, // Deoxys @ Birth Island
+        new(386, 30, FR) { Location = 187, FatefulEncounter = true, Form = 1 }, // Deoxys @ Birth Island
     ];
 
     public static readonly EncounterStatic3[] StaticLG =
     [
         // Celadon City Game Corner
-        new(063, 09, FR) { FixedBall = Ball.Poke, Location = 94 }, // Abra
-        new(035, 08, FR) { FixedBall = Ball.Poke, Location = 94 }, // Clefairy
-        new(123, 25, FR) { FixedBall = Ball.Poke, Location = 94 }, // Scyther
-        new(147, 18, FR) { FixedBall = Ball.Poke, Location = 94 }, // Dratini
-        new(137, 26, FR) { FixedBall = Ball.Poke, Location = 94 }, // Porygon
-
         new(063, 07, LG) { FixedBall = Ball.Poke, Location = 94 }, // Abra
         new(035, 12, LG) { FixedBall = Ball.Poke, Location = 94 }, // Clefairy
         new(127, 18, LG) { FixedBall = Ball.Poke, Location = 94 }, // Pinsir
         new(147, 24, LG) { FixedBall = Ball.Poke, Location = 94 }, // Dratini
         new(137, 18, LG) { FixedBall = Ball.Poke, Location = 94 }, // Porygon
-        new(386, 30,   LG) { Location = 187, FatefulEncounter = true, Form = 2 }, // Deoxys @ Birth Island
+
+        new(386, 30, LG) { Location = 187, FatefulEncounter = true, Form = 2 }, // Deoxys @ Birth Island
     ];
 
     private static ReadOnlySpan<byte> TradeContest_Cool   => [ 30, 05, 05, 05, 05, 10 ];

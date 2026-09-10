@@ -35,8 +35,6 @@ public partial class MemoryAmie : Form
         {
             tabControl1.TabPages.Remove(Tab_Residence);
         }
-        if (Entity is PK9)
-            tabControl1.TabPages.Remove(Tab_Other); // No Fullness/Enjoyment stored.
 
         GetLangStrings();
         LoadFields();
@@ -66,8 +64,15 @@ public partial class MemoryAmie : Form
         }
 
         // Load the Fullness, and Enjoyment
-        M_Fullness.Text = Entity.Fullness.ToString();
-        M_Enjoyment.Text = Entity.Enjoyment.ToString();
+        if (Entity is IFullnessEnjoyment f)
+        {
+            M_Fullness.Text = f.Fullness.ToString();
+            M_Enjoyment.Text = f.Enjoyment.ToString();
+        }
+        else
+        {
+            tabControl1.TabPages.Remove(Tab_Other); // No Fullness/Enjoyment stored.
+        }
 
         M_OT_Friendship.Text = Entity.OriginalTrainerFriendship.ToString();
         M_CT_Friendship.Text = Entity.HandlingTrainerFriendship.ToString();
@@ -96,20 +101,18 @@ public partial class MemoryAmie : Form
             CB_CTFeel.SelectedIndex = m.HandlingTrainerMemoryFeeling;
         }
 
+        var translation = GeneralLocalization.Get(Main.CurrentLanguage);
+        var lOT = translation.OriginalTrainer;
+        var lHT = translation.HandlingTrainer;
         CB_Handler.Items.Clear();
-        CB_Handler.Items.Add($"{Entity.OriginalTrainerName} ({TextArgs.OT})"); // OTNAME : OT
+        CB_Handler.Items.Add($"{Entity.OriginalTrainerName} ({lOT})"); // OTNAME : OT
 
-        if (!string.IsNullOrEmpty(Entity.HandlingTrainerName))
-            CB_Handler.Items.Add(Entity.HandlingTrainerName);
-        else
-            Entity.CurrentHandler = 0;
+        var ht = Entity.HandlingTrainerName;
+        if (string.IsNullOrWhiteSpace(ht))
+            ht = "----EMPTY----";
+        CB_Handler.Items.Add($"{ht} ({lHT})");
 
         tabControl1.SelectedIndex = CB_Handler.SelectedIndex = Entity.CurrentHandler;
-
-        GB_M_OT.Enabled = GB_M_CT.Enabled = GB_Residence.Enabled =
-            BTN_Save.Enabled = M_Fullness.Enabled = M_Enjoyment.Enabled =
-                L_Sociability.Enabled = MT_Sociability.Enabled =
-                    L_Fullness.Enabled = L_Enjoyment.Enabled = Entity is not { IsEgg: true, IsUntraded: true, HandlingTrainerFriendship: 0 };
 
         if (!Entity.IsEgg)
         {
@@ -117,8 +120,8 @@ public partial class MemoryAmie : Form
             if (Entity.Generation < 6)
             {
                 // Previous Generation Mon
-                GB_M_OT.Text = $"{TextArgs.PastGen} {Entity.OriginalTrainerName}: {TextArgs.OT}"; // Past Gen OT : OTNAME
-                GB_M_CT.Text = $"{TextArgs.MemoriesWith} {Entity.HandlingTrainerName}"; // Memories with : HTNAME
+                GB_M_OT.Text = $"{TextArgs.PastGen} {Entity.OriginalTrainerName}: {lOT}"; // Past Gen OT : OTNAME
+                GB_M_CT.Text = $"{TextArgs.MemoriesWith} {Entity.HandlingTrainerName} ({lHT})"; // Memories with : HTNAME
                 enable = false;
                 // Reset to no memory -- don't reset affection as OR/AS can raise it (+20 * n) via Contests
                 CB_OTQual.SelectedIndex = CB_OTFeel.SelectedIndex = 0;
@@ -127,8 +130,8 @@ public partial class MemoryAmie : Form
             else
             {
                 enable = true;
-                GB_M_OT.Text = $"{TextArgs.MemoriesWith} {Entity.OriginalTrainerName} ({TextArgs.OT})"; // Memories with : OTNAME
-                GB_M_CT.Text = $"{TextArgs.MemoriesWith} {Entity.HandlingTrainerName}"; // Memories with : HTNAME
+                GB_M_OT.Text = $"{TextArgs.MemoriesWith} {Entity.OriginalTrainerName} ({lOT})"; // Memories with : OTNAME
+                GB_M_CT.Text = $"{TextArgs.MemoriesWith} {Entity.HandlingTrainerName} ({lHT})"; // Memories with : HTNAME
                 if (Entity.HandlingTrainerName.Length == 0)
                 {
                     CB_Country1.Enabled = CB_Country2.Enabled = CB_Country3.Enabled = CB_Country4.Enabled =
@@ -138,7 +141,7 @@ public partial class MemoryAmie : Form
                 }
                 else
                 {
-                    GB_M_CT.Text = $"{TextArgs.MemoriesWith} {Entity.HandlingTrainerName}";
+                    GB_M_CT.Text = $"{TextArgs.MemoriesWith} {Entity.HandlingTrainerName} ({lHT})";
                 }
             }
             RTB_OT.Visible = CB_OTQual.Enabled = CB_OTMemory.Enabled = CB_OTFeel.Enabled = CB_OTVar.Enabled = enable;
@@ -186,8 +189,11 @@ public partial class MemoryAmie : Form
             a.OriginalTrainerAffection = (byte)Util.ToInt32(M_OT_Affection.Text);
             a.HandlingTrainerAffection = (byte)Util.ToInt32(M_CT_Affection.Text);
         }
-        Entity.Fullness = (byte)Util.ToInt32(M_Fullness.Text);
-        Entity.Enjoyment = (byte)Util.ToInt32(M_Enjoyment.Text);
+        if (Entity is IFullnessEnjoyment f)
+        {
+            f.Fullness = (byte)Util.ToInt32(M_Fullness.Text);
+            f.Enjoyment = (byte)Util.ToInt32(M_Enjoyment.Text);
+        }
 
         // Save Memories
         if (Entity is ITrainerMemories m)
@@ -324,7 +330,7 @@ public partial class MemoryAmie : Form
     {
         if (sender is not ComboBox cb)
             return;
-        int index = Array.IndexOf(PrevCountries, cb);
+        int index = PrevCountries.IndexOf(cb);
         int val = WinFormsUtil.GetIndex(cb);
         if (val > 0)
         {
@@ -360,7 +366,7 @@ public partial class MemoryAmie : Form
         if (sender is not Label l)
             return;
         Label[] labels = [L_Geo0, L_Geo1, L_Geo2, L_Geo3, L_Geo4];
-        int index = Array.IndexOf(labels, l);
+        int index = labels.IndexOf(l);
         if (index < 0)
             return;
         PrevCountries[index].SelectedValue = 0;

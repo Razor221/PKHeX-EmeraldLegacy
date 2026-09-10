@@ -28,6 +28,7 @@ public partial class SAV_BoxLayout : Form
         TB_BoxName.MaxLength = SAV.Generation switch
         {
             2 when SAV is SAV2 { Japanese: false, Korean: false } => 8 * 2,
+            3 when SAV is SAV3RSBox => 8 + SAV3RSBox.BoxNamePrefix,
             6 or 7 => 14,
             >= 8 => 16,
             _ => 8,
@@ -61,7 +62,7 @@ public partial class SAV_BoxLayout : Form
         var names = GameInfo.Strings.wallpapernames;
         switch (SAV.Generation)
         {
-            case 3 when SAV is SAV3:
+            case 3 when SAV is SAV3 or SAV3RSBox:
                 AddRange(CB_BG, names.AsSpan(0, 16));
                 return true;
             case 4 or 5 or 6:
@@ -202,7 +203,7 @@ public partial class SAV_BoxLayout : Form
     private bool MoveItem(int direction)
     {
         // Checking selected item
-        if (LB_BoxSelect.SelectedItem == null || LB_BoxSelect.SelectedIndex < 0)
+        if (LB_BoxSelect.SelectedItem is null || LB_BoxSelect.SelectedIndex < 0)
             return false; // No selected item - nothing to do
 
         // Calculate new index using move direction
@@ -232,7 +233,7 @@ public partial class SAV_BoxLayout : Form
         editing = renamingBox = true;
         if (!MoveItem(dir))
         {
-            System.Media.SystemSounds.Asterisk.Play();
+            WinFormsUtil.Asterisk();
         }
         else if (!SAV.SwapBox(index, index + dir)) // valid but locked
         {

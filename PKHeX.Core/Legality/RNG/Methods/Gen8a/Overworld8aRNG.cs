@@ -11,7 +11,7 @@ public static class Overworld8aRNG
     private const int UNSET = -1;
 
     // ReSharper disable once UnusedTupleComponentInReturnValue
-    public static (ulong GroupSeed, ulong SlotSeed) ApplyDetails(PKM pk, EncounterCriteria criteria, in OverworldParam8a para, bool giveAlphaMove)
+    public static (ulong GroupSeed, ulong SlotSeed) ApplyDetails(PA8 pk, in EncounterCriteria criteria, in OverworldParam8a para, bool giveAlphaMove)
     {
         int ctr = 0;
         const int maxAttempts = 50_000;
@@ -36,8 +36,7 @@ public static class Overworld8aRNG
         // Failed, fall back to Unrestricted and just put whatever.
         if (ctr >= maxAttempts)
         {
-            groupSeed = fakeRand.Next();
-            groupRand = new Xoroshiro128Plus(groupSeed);
+            // both group and slot seed values are still valid from last iteration; don't bother repeating work.
             var slotRand = new Xoroshiro128Plus(slotSeed);
             _ = slotRand.Next();
             var entitySeed = slotRand.Next();
@@ -51,7 +50,7 @@ public static class Overworld8aRNG
     }
 
     // ReSharper disable once UnusedTupleComponentInReturnValue
-    public static (ulong EntitySeed, ulong SlotRand) ApplyDetails(PKM pk, in OverworldParam8a para, bool giveAlphaMove, ref Xoroshiro128Plus groupRand)
+    public static (ulong EntitySeed, ulong SlotRand) ApplyDetails(PA8 pk, in OverworldParam8a para, bool giveAlphaMove, ref Xoroshiro128Plus groupRand)
     {
         var slotSeed = groupRand.Next();
         var alphaSeed = groupRand.Next();
@@ -84,7 +83,7 @@ public static class Overworld8aRNG
         return (int)alphaRand.NextInt((uint)count);
     }
 
-    public static bool TryApplyFromSeed(PKM pk, EncounterCriteria criteria, in OverworldParam8a para, ulong seed)
+    public static bool TryApplyFromSeed(PA8 pk, in EncounterCriteria criteria, in OverworldParam8a para, ulong seed)
     {
         var rand = new Xoroshiro128Plus(seed);
 
@@ -130,6 +129,8 @@ public static class Overworld8aRNG
             if (para.Shiny == Shiny.AlwaysStar && type != Shiny.AlwaysStar)
                 return false;
         }
+        if (para.Shiny is Shiny.Random && criteria.IsSpecifiedShiny() && !criteria.IsSatisfiedShiny(GetShinyXor(pid, pk.ID32), 16))
+            return false;
         pk.PID = pid;
 
         Span<int> ivs = [UNSET, UNSET, UNSET, UNSET, UNSET, UNSET];
@@ -149,15 +150,15 @@ public static class Overworld8aRNG
                 ivs[i] = (int)rand.NextInt(MAX + 1);
         }
 
-        if (!criteria.IsIVsCompatibleSpeedLast(ivs, 8))
+        if (!criteria.IsIVsCompatibleSpeedLast(ivs))
             return false;
 
-        pk.IV_HP = ivs[0];
-        pk.IV_ATK = ivs[1];
-        pk.IV_DEF = ivs[2];
-        pk.IV_SPA = ivs[3];
-        pk.IV_SPD = ivs[4];
-        pk.IV_SPE = ivs[5];
+        pk.IV32 = (uint)ivs[0] |
+                  (uint)(ivs[1] << 05) |
+                  (uint)(ivs[2] << 10) |
+                  (uint)(ivs[5] << 15) | // speed is last in the array, but in the middle of the 32bit value
+                  (uint)(ivs[3] << 20) |
+                  (uint)(ivs[4] << 25);
 
         pk.RefreshAbility((int)rand.NextInt(2));
 
@@ -168,28 +169,24 @@ public static class Overworld8aRNG
             PersonalInfo.RatioMagicMale => 0,
             _ => rand.NextInt(252) + 1 < para.GenderRatio ? (byte)1 : (byte)0,
         };
-        if (!criteria.IsGenderSatisfied(gender))
+        if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
             return false;
         pk.Gender = gender;
 
         var nature = (Nature)rand.NextInt(25);
-        pk.Nature = pk.StatNature = nature;
+        if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(nature))
+            return false;
+        pk.Nature = pk.StatAlignment = nature;
 
         var (height, weight) = para.IsAlpha
             ? (byte.MaxValue, byte.MaxValue)
             : ((byte)(rand.NextInt(0x81) + rand.NextInt(0x80)),
                (byte)(rand.NextInt(0x81) + rand.NextInt(0x80)));
 
-        if (pk is IScaledSize s)
-        {
-            s.HeightScalar = height;
-            s.WeightScalar = weight;
-            if (pk is IScaledSizeValue a)
-            {
-                a.ResetHeight();
-                a.ResetWeight();
-            }
-        }
+        pk.HeightScalar = height;
+        pk.WeightScalar = weight;
+        pk.ResetHeight();
+        pk.ResetWeight();
 
         return true;
     }
@@ -294,7 +291,16 @@ public static class Overworld8aRNG
             if (!isFixedH && s.HeightScalar != height)
                 return false;
             if (!isFixedW && s.WeightScalar != weight)
-                return false;
+            {
+                if (height == 0 && s.WeightScalar == 0 && HomeQuirks.HasEnteredSetZeroScale(pk))
+                {
+                    // OK
+                }
+                else
+                {
+                    return false;
+                }
+            }
         }
 
         return true;

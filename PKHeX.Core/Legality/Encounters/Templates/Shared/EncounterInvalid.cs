@@ -5,6 +5,9 @@ namespace PKHeX.Core;
 /// <summary>
 /// Invalid Encounter Data
 /// </summary>
+/// <remarks>
+/// To return something, rather than null, when an encounter is invalid or not found.
+/// </remarks>
 public sealed record EncounterInvalid : IEncounterable
 {
     public static readonly EncounterInvalid Default = new();
@@ -18,12 +21,12 @@ public sealed record EncounterInvalid : IEncounterable
     public EntityContext Context { get; }
     public GameVersion Version { get; }
     public bool IsShiny => false;
-    public Shiny Shiny => Shiny.Never;
+    public Shiny Shiny => Shiny.Random;
 
     public string Name => "Invalid";
     public string LongName => "Invalid";
     public ushort Location => 0;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public AbilityPermission Ability => AbilityPermission.Any12H;
     public Ball FixedBall => Ball.None;
 

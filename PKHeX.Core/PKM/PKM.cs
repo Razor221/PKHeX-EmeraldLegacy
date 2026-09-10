@@ -11,28 +11,23 @@ namespace PKHeX.Core;
 /// Object representing a <see cref="PKM"/>'s data and derived properties.
 /// </summary>
 [DynamicallyAccessedMembers(PublicProperties | NonPublicProperties | PublicParameterlessConstructor)]
-public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILangNick, IGameValueLimit, INature, IFatefulEncounter, IStringConverter, ITrashIntrospection
+public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILangNick, IGameValueLimit, INature, IFatefulEncounter, IStringConverter, ITrashIntrospection, IContext
 {
-    /// <summary>
-    /// Valid file extensions that represent <see cref="PKM"/> data, without the leading '.'
-    /// </summary>
-    public static readonly string[] Extensions = EntityFileExtension.GetExtensions();
     public abstract int SIZE_PARTY { get; }
     public abstract int SIZE_STORED { get; }
     public string Extension => GetType().Name.ToLowerInvariant();
     public abstract PersonalInfo PersonalInfo { get; }
+
+    /// <summary>
+    /// Bytes in the data structure that are unused, either as alignment padding, or were reserved and never used.
+    /// </summary>
     public virtual ReadOnlySpan<ushort> ExtraBytes => [];
 
-    // Internal Attributes set on creation
-    public readonly byte[] Data; // Raw Storage
+    protected readonly Memory<byte> Raw; // Raw Storage
+    public Span<byte> Data => Raw.Span;
 
-    protected PKM(byte[] data) => Data = data;
-    protected PKM([ConstantExpected] int size) => Data = new byte[size];
-
-    public virtual byte[] EncryptedPartyData => Encrypt().AsSpan(0, SIZE_PARTY).ToArray();
-    public virtual byte[] EncryptedBoxData => Encrypt().AsSpan(0, SIZE_STORED).ToArray();
-    public virtual byte[] DecryptedPartyData => Write().AsSpan(0, SIZE_PARTY).ToArray();
-    public virtual byte[] DecryptedBoxData => Write().AsSpan(0, SIZE_STORED).ToArray();
+    protected PKM(Memory<byte> data) => Raw = data;
+    protected PKM([ConstantExpected] int size) => Raw = new byte[size];
 
     /// <summary>
     /// Rough indication if the data is junk or not.
@@ -44,16 +39,65 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public abstract Span<byte> OriginalTrainerTrash { get; }
     public virtual Span<byte> HandlingTrainerTrash => [];
 
-    protected abstract byte[] Encrypt();
+    /// <summary>
+    /// Conditions the <see cref="NicknameTrash"/> data to safely terminate the Nickname string from the text entry screen.
+    /// </summary>
+    public virtual void PrepareNickname() { }
+
     public abstract EntityContext Context { get; }
-    public byte Format => Context.Generation();
+    public byte Format => Context.Generation;
     public TrainerIDFormat TrainerIDDisplayFormat => this.GetTrainerIDFormat();
 
-    private byte[] Write()
+    /// <summary> Writes the entity data to a sequential (stored only, no party stats) buffer destination. </summary>
+    public virtual int WriteDecryptedDataStored(Span<byte> destination)
     {
         RefreshChecksum();
-        return Data;
+        int length = SIZE_STORED;
+        Data[..length].CopyTo(destination);
+        return length;
     }
+
+    /// <summary> Writes the entity data to a sequential (stored, party) buffer destination. </summary>
+    public virtual void WriteDecryptedDataParty(Span<byte> destination)
+    {
+        var stored = destination[..SIZE_STORED];
+        var party = destination[SIZE_STORED..SIZE_PARTY];
+        WriteDecryptedDataParty(stored, party);
+    }
+
+    /// <summary> Writes the entity data to a separate (stored, party) buffer destination. </summary>
+    public virtual void WriteDecryptedDataParty(Span<byte> stored, Span<byte> party)
+    {
+        WriteDecryptedDataStored(stored);
+        Data[SIZE_STORED..SIZE_PARTY].CopyTo(party);
+    }
+
+    /// <summary> Writes the entity data to a sequential (stored only, no party stats) buffer destination and encrypts to the at-rest state. </summary>
+    public virtual void WriteEncryptedDataStored(Span<byte> destination)
+    {
+        var stored = destination[..SIZE_STORED];
+        WriteDecryptedDataStored(stored);
+        EncryptStored(stored);
+    }
+
+    /// <summary> Writes the entity data to a sequential (stored, party) buffer destination and encrypts to the at-rest state. </summary>
+    public virtual void WriteEncryptedDataParty(Span<byte> destination)
+    {
+        var stored = destination[..SIZE_STORED];
+        var party = destination[SIZE_STORED..SIZE_PARTY];
+        WriteEncryptedDataParty(stored, party);
+    }
+
+    /// <summary> Writes the entity data to a separate (stored, party) buffer destination and encrypts to the at-rest state. </summary>
+    public virtual void WriteEncryptedDataParty(Span<byte> stored, Span<byte> party)
+    {
+        WriteDecryptedDataParty(stored, party);
+        EncryptStored(stored);
+        EncryptParty(party);
+    }
+
+    protected abstract void EncryptStored(Span<byte> stored);
+    protected abstract void EncryptParty(Span<byte> party);
 
     // Surface Properties
     public abstract ushort Species { get; set; }
@@ -61,7 +105,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public abstract int HeldItem { get; set; }
     public abstract byte Gender { get; set; }
     public abstract Nature Nature { get; set; }
-    public virtual Nature StatNature { get => Nature; set => Nature = value; }
+    public virtual Nature StatAlignment { get => Nature; set => Nature = value; }
     public abstract int Ability { get; set; }
     public abstract byte CurrentFriendship { get; set; }
     public abstract byte Form { get; set; }
@@ -144,8 +188,6 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public virtual string HandlingTrainerName { get => string.Empty; set { } }
     public virtual byte HandlingTrainerGender { get => 0; set { } }
     public virtual byte HandlingTrainerFriendship { get => 0; set { } }
-    public virtual byte Enjoyment { get => 0; set { } }
-    public virtual byte Fullness { get => 0; set { } }
     public virtual int AbilityNumber { get => 0; set { } }
 
     public abstract string GetString(ReadOnlySpan<byte> data);
@@ -170,7 +212,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         get
         {
             // Check to see if date is valid
-            if (!DateUtil.IsDateValid(2000 + MetYear, MetMonth, MetDay))
+            if (!DateUtil.IsValidDate(2000 + MetYear, MetMonth, MetDay))
                 return null;
             return new DateOnly(2000 + MetYear, MetMonth, MetDay);
         }
@@ -213,7 +255,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         get
         {
             // Check to see if date is valid
-            if (!DateUtil.IsDateValid(2000 + EggYear, EggMonth, EggDay))
+            if (!DateUtil.IsValidDate(2000 + EggYear, EggMonth, EggDay))
                 return null;
             return new DateOnly(2000 + EggYear, EggMonth, EggDay);
         }
@@ -258,10 +300,16 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
 
     /// <summary> Maximum length a Trainer Name can be represented as. </summary>
     public abstract int MaxStringLengthTrainer { get; }
+
     /// <summary> Maximum length a Nickname can be represented as. </summary>
     public abstract int MaxStringLengthNickname { get; }
-    /// <summary> Total characters allocated for holding a Trainer Name. </summary>
+
+    /// <summary> Total characters allocated for holding an Original Trainer Name. </summary>
     public abstract int TrashCharCountTrainer { get; }
+
+    /// <summary> Total characters allocated for holding a Handling Trainer Name. </summary>
+    public virtual int TrashCharCountHandler => TrashCharCountTrainer;
+
     /// <summary> Total characters allocated for holding a Nickname. </summary>
     public abstract int TrashCharCountNickname { get; }
 
@@ -289,25 +337,26 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public bool SM => Version is SN or MN;
     public bool USUM => Version is US or UM;
     public bool GO => Version is GameVersion.GO;
-    public bool VC1 => Version is >= RD and <= YW;
-    public bool VC2 => Version is >= GD and <= C;
+    public bool VC1 => Version is RD or GN or BU or YW;
+    public bool VC2 => Version is GD or SI or C;
     public bool LGPE => Version is GP or GE;
     public bool SWSH => Version is SW or SH;
     public virtual bool BDSP => Version is BD or SP;
     public virtual bool LA => Version is PLA;
     public virtual bool SV => Version is SL or VL;
+    public bool ZA => Version is GameVersion.ZA;
 
     public bool GO_LGPE => GO && MetLocation == Locations.GO7;
     public bool GO_HOME => GO && MetLocation == Locations.GO8;
     public bool VC => VC1 || VC2;
     public bool GG => LGPE || GO_LGPE;
-    public bool Gen9 => SV;
-    public bool Gen8 => Version is >= SW and <= SP || GO_HOME;
-    public bool Gen7 => Version is >= SN and <= UM || GG;
-    public bool Gen6 => Version is >= X and <= OR;
-    public bool Gen5 => Version is >= W and <= B2;
-    public bool Gen4 => Version is HG or SS or D or P or GameVersion.Pt;
-    public bool Gen3 => Version is (>= S and <= LG) or CXD;
+    public bool Gen9 => SV || ZA;
+    public bool Gen8 => Version.IsGen8() || GO_HOME;
+    public bool Gen7 => Version.IsGen7();
+    public bool Gen6 => Version.IsGen6();
+    public bool Gen5 => Version.IsGen5();
+    public bool Gen4 => Version.IsGen4();
+    public bool Gen3 => Version.IsGen3();
     public bool Gen2 => Version == GSC; // Fixed value set by the Gen2 PKM classes
     public bool Gen1 => Version == RBY; // Fixed value set by the Gen1 PKM classes
     public bool GenU => Generation <= 0;
@@ -318,7 +367,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         {
             if (Gen9) return 9;
             if (Gen8) return 8;
-            if (Gen7) return 7;
+            if (Gen7 || GG) return 7;
             if (Gen6) return 6;
             if (Gen5) return 5;
             if (Gen4) return 4;
@@ -370,6 +419,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
 
     public int[] IVs
     {
+        [Obsolete($"Use the {nameof(GetIVs)} method with stackalloc to not allocate.")]
         get => [IV_HP, IV_ATK, IV_DEF, IV_SPE, IV_SPA, IV_SPD];
         set => SetIVs(value);
     }
@@ -404,6 +454,23 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         IV_SPE = value[3];
         IV_SPA = value[4];
         IV_SPD = value[5];
+    }
+
+    /// <inheritdoc cref="SetIVs(ReadOnlySpan{int})"/>
+    public void SetIVs(uint iv32)
+    {
+        for (int i = 0; i < 6; i++)
+            this.SetIV(i, (int)(iv32 >> (5 * i)) & 0x1F);
+    }
+
+    /// <inheritdoc cref="GetIVs(Span{int})"/>
+    /// <remarks>Returns the combined 30-bit representation commonly used as IV32.</remarks>
+    public uint GetIVs()
+    {
+        uint iv32 = 0;
+        for (int i = 0; i < 6; i++)
+            iv32 |= (uint)GetIV(i) << (5 * i);
+        return iv32;
     }
 
     /// <summary>
@@ -456,6 +523,12 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         set => SetMoves(value);
     }
 
+    /// <summary>
+    /// Tries to add a move to the moveset of the PKM.
+    /// </summary>
+    /// <param name="move">Move ID to add.</param>
+    /// <param name="pushOut">If the current moveset is full, whether to push out the oldest move (index 0) to add the new one.</param>
+    /// <returns>True if the move was added, false if not added.</returns>
     public bool AddMove(ushort move, bool pushOut = true)
     {
         if (move == 0 || move >= MaxMoveID || HasMove(move))
@@ -473,6 +546,9 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         return true;
     }
 
+    /// <summary>
+    /// Count of non-zero moves in the moveset.
+    /// </summary>
     public int MoveCount => Convert.ToInt32(Move1 != 0) + Convert.ToInt32(Move2 != 0) + Convert.ToInt32(Move3 != 0) + Convert.ToInt32(Move4 != 0);
 
     public void GetMoves(Span<ushort> value)
@@ -481,15 +557,6 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         value[2] = Move3;
         value[1] = Move2;
         value[0] = Move1;
-    }
-
-    public void SetMoves(Moveset value)
-    {
-        Move1 = value.Move1;
-        Move2 = value.Move2;
-        Move3 = value.Move3;
-        Move4 = value.Move4;
-        this.SetMaximumPPCurrent(value);
     }
 
     public void SetMoves(ReadOnlySpan<ushort> value)
@@ -505,14 +572,6 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     {
         get => [RelearnMove1, RelearnMove2, RelearnMove3, RelearnMove4];
         set => SetRelearnMoves(value);
-    }
-
-    public void SetRelearnMoves(Moveset value)
-    {
-        RelearnMove1 = value.Move1;
-        RelearnMove2 = value.Move2;
-        RelearnMove3 = value.Move3;
-        RelearnMove4 = value.Move4;
     }
 
     public void SetRelearnMoves(ReadOnlySpan<ushort> value)
@@ -547,12 +606,12 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         set
         {
             var bits = HiddenPower.GetLowBits(value);
-            IV_HP = (IV_HP & ~1)   + ((bits >> 0) & 1);
-            IV_ATK = (IV_ATK & ~1) + ((bits >> 1) & 1);
-            IV_DEF = (IV_DEF & ~1) + ((bits >> 2) & 1);
-            IV_SPE = (IV_SPE & ~1) + ((bits >> 3) & 1);
-            IV_SPA = (IV_SPA & ~1) + ((bits >> 4) & 1);
-            IV_SPD = (IV_SPD & ~1) + ((bits >> 5) & 1);
+            IV_HP  = (IV_HP  & ~1) | ((bits >> 0) & 1);
+            IV_ATK = (IV_ATK & ~1) | ((bits >> 1) & 1);
+            IV_DEF = (IV_DEF & ~1) | ((bits >> 2) & 1);
+            IV_SPE = (IV_SPE & ~1) | ((bits >> 3) & 1);
+            IV_SPA = (IV_SPA & ~1) | ((bits >> 4) & 1);
+            IV_SPD = (IV_SPD & ~1) | ((bits >> 5) & 1);
         }
     }
 
@@ -586,11 +645,12 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         if (gv == PersonalInfo.RatioMagicMale)
             return gender == 0;
 
-        var gen = Generation;
-        if (gen is not (3 or 4 or 5))
-            return gender == (gender & 1);
+        if (gender >= 2)
+            return false; // genderless would have returned above
+        if (!(Gen3 || Gen4 || Gen5))
+            return true; // not tied to PID
 
-        return gender == EntityGender.GetFromPIDAndRatio(PID, gv);
+        return gender == EntityGender.GetFromPID(PID, gv);
     }
 
     /// <summary>
@@ -607,7 +667,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     /// <summary>
     /// Reorders moves and fixes PP if necessary.
     /// </summary>
-    public void FixMoves()
+    public virtual void FixMoves()
     {
         ReorderMoves();
 
@@ -693,17 +753,17 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
 
     public virtual void LoadStats(IBaseStat p, Span<ushort> stats)
     {
-        int level = CurrentLevel; // recalculate instead of checking Stat_Level
+        var level = CurrentLevel; // recalculate instead of checking Stat_Level
         if (this is IHyperTrain t)
             LoadStats(stats, p, t, level);
         else
             LoadStats(stats, p, level);
 
-        // Amplify stats based on the stat nature.
-        NatureAmp.ModifyStatsForNature(stats, StatNature);
+        // Amplify stats based on the stat alignment.
+        StatAlignment.ModifyStatsForAlignment(stats);
     }
 
-    private void LoadStats(Span<ushort> stats, IBaseStat p, IHyperTrain t, int level)
+    private void LoadStats(Span<ushort> stats, IBaseStat p, IHyperTrain t, byte level)
     {
         stats[0] = (ushort)(p.HP == 1 ? 1 : (((t.HT_HP ? 31 : IV_HP) + (2 * p.HP) + (EV_HP / 4) + 100) * level / 100) + 10);
         stats[1] = (ushort)((((t.HT_ATK ? 31 : IV_ATK) + (2 * p.ATK) + (EV_ATK / 4)) * level / 100) + 5);
@@ -713,7 +773,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         stats[3] = (ushort)((((t.HT_SPE ? 31 : IV_SPE) + (2 * p.SPE) + (EV_SPE / 4)) * level / 100) + 5);
     }
 
-    private void LoadStats(Span<ushort> stats, IBaseStat p, int level)
+    private void LoadStats(Span<ushort> stats, IBaseStat p, byte level)
     {
         stats[0] = (ushort)(p.HP == 1 ? 1 : ((IV_HP + (2 * p.HP) + (EV_HP / 4) + 100) * level / 100) + 10);
         stats[1] = (ushort)(((IV_ATK + (2 * p.ATK) + (EV_ATK / 4)) * level / 100) + 5);
@@ -845,7 +905,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public virtual void SetShiny()
     {
         var rnd = Util.Rand;
-        do { PID = EntityPID.GetRandomPID(rnd, Species, Gender, Version, Nature, Form, PID); }
+        do PID = EntityPID.GetRandomPID(rnd, Species, Gender, Version, Nature, Form, PID);
         while (!IsShiny);
         if (Format >= 6 && (Gen3 || Gen4 || Gen5))
             EncryptionConstant = PID;
@@ -980,6 +1040,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     /// Applies all shared properties from the current <see cref="PKM"/> to the <see cref="result"/> <see cref="PKM"/>.
     /// </summary>
     /// <param name="result"><see cref="PKM"/> that receives property values.</param>
+    [RequiresUnreferencedCode("Copies format-specific PKM properties via reflection for unsupported cross-format conversions.")]
     public void TransferPropertiesWithReflection(PKM result)
     {
         // Only transfer declared properties not defined in PKM.cs but in the actual type
@@ -1008,16 +1069,16 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         foreach (var property in shared)
         {
             // Setter sanity check: a derived type may not implement a setter if its parent type has one.
-            if (!BatchEditing.TryGetHasProperty(result, property, out var pi))
+            if (!EntityBatchEditor.Instance.TryGetHasProperty(result, property, out var pi))
                 continue;
             if (!pi.CanWrite)
                 continue;
 
             // Fetch the current value.
-            if (!BatchEditing.TryGetHasProperty(this, property, out var src))
+            if (!EntityBatchEditor.Instance.TryGetHasProperty(this, property, out var src))
                 continue;
             var prop = src.GetValue(this);
-            if (prop is byte[] or null)
+            if (prop is byte[] or Memory<byte> or null)
                 continue; // not a valid property transfer
             if (pi.PropertyType != src.PropertyType)
                 continue; // property type mismatch (not really a 1:1 shared property)
@@ -1148,4 +1209,23 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         5 => IV_SPD,
         _ => throw new ArgumentOutOfRangeException(nameof(index), index, "IV index must be between 0 and 5."),
     };
+
+    /// <summary>
+    /// Checks if the current <see cref="PKM"/> has the same stored data as another <see cref="PKM"/>. This is used to check if a PKM has been modified from its original imported state.
+    /// </summary>
+    public virtual bool EqualsStored(PKM pk)
+    {
+        // Generally, the objects should be of the same derived type. Don't bother checking that explicitly.
+        if (pk.PID != PID)
+            return false;
+
+        var stored = pk.Data;
+        if (stored.Length >= pk.SIZE_STORED)
+            stored = stored[..SIZE_STORED];
+        var self = Data;
+        if (self.Length >= SIZE_STORED)
+            self = self[..SIZE_STORED];
+
+        return stored.SequenceEqual(self);
+    }
 }

@@ -5,7 +5,9 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 8 BD/SP Trade Encounter
 /// </summary>
-public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedTrainer, IFixedNickname, IEncounterConvertible<PB8>, IScaledSizeReadOnly, IFixedOTFriendship, IMoveset, IContestStatsReadOnly, IFixedGender, IFixedNature, IFixedIVSet
+public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IEncounterConvertible<PB8>,
+    IFixedTrainer, IFixedNickname, IScaledSizeReadOnly, IFixedOTFriendship, IMoveset,
+    IContestStatsReadOnly, IFixedGender, IFixedNature, IFixedIVSet, ITrainerID32ReadOnly
 {
     public byte Generation => 8;
     public EntityContext Context => EntityContext.Gen8b;
@@ -19,11 +21,13 @@ public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedT
     public bool IsFixedNickname => true;
     public GameVersion Version { get; }
 
-    private string[] TrainerNames { get; }
-    private string[] Nicknames { get; }
+    private readonly ReadOnlyMemory<string> TrainerNames;
+    private readonly ReadOnlyMemory<string> Nicknames;
 
     public required Nature Nature { get; init; }
-    public required ushort ID32 { get; init; }
+    public required ushort TID16 { get; init; }
+    public ushort SID16 => 0;
+    public uint ID32 => TID16 | (uint)(SID16 << 16);
     public required AbilityPermission Ability { get; init; }
     public required byte Gender { get; init; }
     public required byte OTGender { get; init; }
@@ -54,9 +58,9 @@ public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedT
     public byte LevelMin => Level;
     public byte LevelMax => Level;
 
-    public EncounterTrade8b(ReadOnlySpan<string[]> names, byte index, GameVersion game)
+    public EncounterTrade8b(ReadOnlySpan<string[]> names, byte index, GameVersion version)
     {
-        Version = game;
+        Version = version;
         Nicknames = EncounterUtil.GetNamesForLanguage(names, index);
         TrainerNames = EncounterUtil.GetNamesForLanguage(names, (uint)(index + (names[1].Length >> 1)));
     }
@@ -70,8 +74,8 @@ public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedT
 
     public PB8 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.BDSP[Species, Form];
         var pk = new PB8
         {
@@ -84,19 +88,19 @@ public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedT
             MetDate = EncounterDate.GetDateSwitch(),
             Gender = Gender,
             Nature = Nature,
-            StatNature = Nature,
+            StatAlignment = Nature,
             Ball = (byte)FixedBall,
 
             ID32 = ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = OTGender,
-            OriginalTrainerName = TrainerNames[lang],
+            OriginalTrainerName = TrainerNames.Span[language],
 
             OriginalTrainerFriendship = OriginalTrainerFriendship,
 
             IsNicknamed = IsFixedNickname,
-            Nickname = IsFixedNickname ? Nicknames[lang] : SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = IsFixedNickname ? Nicknames.Span[language] : SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             HeightScalar = HeightScalar,
             WeightScalar = WeightScalar,
             HandlingTrainerName = tr.OT,
@@ -121,9 +125,9 @@ public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedT
 
     #region Matching
 
-    public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => (uint)language < TrainerNames.Length && trainer.SequenceEqual(TrainerNames[language]);
-    public bool IsNicknameMatch(PKM pk, ReadOnlySpan<char> nickname, int language) => (uint)language < Nicknames.Length && nickname.SequenceEqual(Nicknames[language]);
-    public string GetNickname(int language) => (uint)language < Nicknames.Length ? Nicknames[language] : Nicknames[0];
+    public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => (uint)language < TrainerNames.Length && trainer.SequenceEqual(TrainerNames.Span[language]);
+    public bool IsNicknameMatch(PKM pk, ReadOnlySpan<char> nickname, int language) => (uint)language < Nicknames.Length && nickname.SequenceEqual(Nicknames.Span[language]);
+    public string GetNickname(int language) => Nicknames.Span[(uint)language < Nicknames.Length ? language : 0];
 
     public EncounterMatchRating GetMatchRating(PKM pk) => EncounterMatchRating.Match;
 
@@ -202,11 +206,13 @@ public sealed record EncounterTrade8b : IEncounterable, IEncounterMatch, IFixedT
         if (currentLanguageID is not ((int)LanguageID.Japanese or (int)LanguageID.German))
             return -1;
 
+        var nicknames = Nicknames.Span;
+        var trainers = TrainerNames.Span;
         for (int i = 1; i < (int)LanguageID.ChineseT; i++)
         {
-            if (!nick.SequenceEqual(Nicknames[i]))
+            if (!nick.SequenceEqual(nicknames[i]))
                 continue;
-            if (!ot.SequenceEqual(TrainerNames[i]))
+            if (!ot.SequenceEqual(trainers[i]))
                 continue;
 
             // Language gets flipped to another language ID; can't be equal.

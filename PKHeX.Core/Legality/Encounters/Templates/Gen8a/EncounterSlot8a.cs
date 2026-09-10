@@ -6,9 +6,8 @@ namespace PKHeX.Core;
 /// Encounter Slot found in <see cref="GameVersion.PLA"/>.
 /// </summary>
 /// <param name="AlphaType">0=Never, 1=Random, 2=Guaranteed</param>
-/// <param name="FlawlessIVCount"></param>
 public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byte Form, byte LevelMin, byte LevelMax, byte AlphaType, byte FlawlessIVCount, Gender Gender)
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PA8>, IAlphaReadOnly, IMasteryInitialMoveShop8, IFlawlessIVCount, ISeedCorrelation64<PKM>
+    : IEncounterable, IEncounterMatch, IEncounterConvertible<PA8>, IAlphaReadOnly, IMasteryInitialMoveShop8, IFlawlessIVCount, ISeedCorrelation64<PKM>, IGenerateSeed64
 {
     public byte Generation => 8;
     public EntityContext Context => EntityContext.Gen8a;
@@ -17,13 +16,14 @@ public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byt
     public Ball FixedBall => Ball.None;
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
 
     public bool IsAlpha => AlphaType is not 0;
 
     public string Name => $"Wild Encounter ({Version})";
     public string LongName => $"{Name} {Type.ToString().Replace('_', ' ')}";
-    public GameVersion Version => Parent.Version;
+    private const GameVersion Version = GameVersion.PLA;
+    GameVersion IVersion.Version => GameVersion.PLA;
     public ushort Location => Parent.Location;
     public SlotType8a Type => Parent.Type;
 
@@ -35,11 +35,11 @@ public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byt
     public PA8 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PA8 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var pi = PersonalTable.LA[Species, Form];
         var pk = new PA8
         {
-            Language = lang,
+            Language = language,
             Species = Species,
             Form = Form,
             CurrentLevel = LevelMin,
@@ -54,41 +54,54 @@ public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byt
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
             OriginalTrainerFriendship = pi.BaseFriendship,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
-        SetPINGA(pk, criteria, pi);
+        SetPINGA(pk, tr, criteria, pi);
         pk.Scale = pk.HeightScalar;
         pk.ResetHeight();
         pk.ResetWeight();
-        SetEncounterMoves(pk, LevelMin);
+        SetEncounterMoves(pk, pk.MetLevel);
         pk.ResetPartyStats();
         return pk;
     }
 
-    private void SetPINGA(PA8 pk, EncounterCriteria criteria, PersonalInfo8LA pi)
+    private void SetPINGA(PA8 pk, ITrainerInfo tr, in EncounterCriteria criteria, PersonalInfo8LA pi)
     {
-        var para = GetParams(pi);
+        var rollCount = GetRollCount(Type, tr);
+        var para = GetParams(pi, rollCount);
+        bool checkLevel = criteria.IsSpecifiedLevelRange() && this.IsLevelWithinRange(criteria);
         while (true)
         {
             var (_, slotSeed) = Overworld8aRNG.ApplyDetails(pk, criteria, para, HasAlphaMove);
-            if (this.IsRandomLevel())
+            if (this.IsRandomLevel)
             {
                 // Give a random level according to the RNG correlation.
-                var lvl = Overworld8aRNG.GetRandomLevel(slotSeed, LevelMin, LevelMax);
-                if (criteria.IsSpecifiedLevelRange() && !criteria.IsLevelRangeSatisfied(lvl))
+                var level = Overworld8aRNG.GetRandomLevel(slotSeed, LevelMin, LevelMax);
+                if (checkLevel && !criteria.IsSatisfiedLevelRange(level))
                     continue;
-                pk.MetLevel = pk.CurrentLevel = lvl;
+                pk.MetLevel = pk.CurrentLevel = level;
             }
             break;
         }
     }
 
-    private OverworldParam8a GetParams(PersonalInfo8LA pi) => new()
+    public void GenerateSeed64(PKM pk, ITrainerInfo tr, ulong seed)
+    {
+        if (pk is not PA8 pa8)
+            throw new ArgumentException($"{nameof(pk)} must be a {nameof(PA8)} instance.", nameof(pk));
+        var criteria = EncounterCriteria.Unrestricted;
+        var pi = PersonalTable.LA.GetFormEntry(Species, Form);
+        var rollCount = GetRollCount(Type, tr);
+        var para = GetParams(pi, rollCount);
+        _ = Overworld8aRNG.ApplyDetails(pa8, criteria, para, HasAlphaMove);
+    }
+
+    private OverworldParam8a GetParams(PersonalInfo8LA pi, byte rollCount) => new()
     {
         Shiny = Shiny,
         IsAlpha = IsAlpha,
         FlawlessIVs = FlawlessIVCount,
-        RollCount = GetRollCount(Type),
+        RollCount = rollCount,
         GenderRatio = Gender switch
         {
             Gender.Male => PersonalInfo.RatioMagicMale,
@@ -100,26 +113,32 @@ public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byt
     // hardcoded 7 to assume max dex progress + shiny charm.
     private const int MaxRollCount = 7;
 
-    private static byte GetRollCount(SlotType8a type) => (byte)(MaxRollCount + type switch
+    private byte GetRollCount(SlotType8a type, ITrainerInfo tr) => (byte)(GetRollCountBase(tr, Species) + GetRollCountBoost(type));
+
+    private static byte GetRollCountBoost(SlotType8a type) => type switch
     {
         SlotType8a.MassOutbreakMassive => 12,
         SlotType8a.MassOutbreakRegular => 25,
         _ => 0,
-    });
+    };
 
-    private void SetEncounterMoves(PKM pk, int level)
+    private int GetRollCountBase(ITrainerInfo tr, ushort species)
     {
-        var pa8 = (PA8)pk;
-        Span<ushort> moves = stackalloc ushort[4];
-        var (learn, mastery) = GetLevelUpInfo();
-        LoadInitialMoveset(pa8, moves, learn, level);
-        pk.SetMoves(moves);
-        pa8.SetEncounterMasteryFlags(moves, mastery, level);
-        if (pa8.AlphaMove != 0)
-            pa8.SetMasteryFlagMove(pa8.AlphaMove);
+        if (tr is not ITrainerInfo8a la)
+            return MaxRollCount;
+        return la.GetShinyRolls(species);
     }
 
-    public void LoadInitialMoveset(PA8 pa8, Span<ushort> moves, Learnset learn, int level)
+    private void SetEncounterMoves(PA8 pk, byte level)
+    {
+        Span<ushort> moves = stackalloc ushort[4];
+        var (learn, mastery) = GetLevelUpInfo();
+        LoadInitialMoveset(pk, moves, learn, level);
+        pk.SetMoves(moves);
+        pk.SetEncounterMasteryFlags(moves, mastery, level, pk.AlphaMove);
+    }
+
+    public void LoadInitialMoveset(PA8 pa8, Span<ushort> moves, Learnset learn, byte level)
     {
         if (pa8.AlphaMove != 0)
         {
@@ -154,7 +173,7 @@ public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byt
             return EncounterMatchRating.PartialMatch;
         if (IsDeferredWurmple(pk))
             return EncounterMatchRating.PartialMatch;
-        if (!MarkRules.IsMarkValidAlpha(pk, IsAlpha))
+        if (!MarkRules.IsMarkValidAlpha(pk, IsAlpha) || (pk is IAlphaReadOnly a && a.IsAlpha != IsAlpha))
             return EncounterMatchRating.DeferredErrors;
         if (FlawlessIVCount is not 0 && pk.FlawlessIVCount < FlawlessIVCount)
             return EncounterMatchRating.DeferredErrors;
@@ -213,41 +232,42 @@ public sealed record EncounterSlot8a(EncounterArea8a Parent, ushort Species, byt
             return true; // Can't check.
 
         bool allowAlphaPurchaseBug = Type is not SlotType8a.MassOutbreakMassive; // Everything else Alpha is pre-1.1
-        var level = pk.MetLevel;
+        var metLevel = pk.MetLevel;
         var (learn, mastery) = GetLevelUpInfo();
         ushort alpha = pk is PA8 pa ? pa.AlphaMove : (ushort)0;
-        if (!p.IsValidPurchasedEncounter(learn, level, alpha, allowAlphaPurchaseBug))
+        if (!p.IsValidPurchasedEncounter(learn, metLevel, alpha, allowAlphaPurchaseBug))
             return false;
 
         Span<ushort> moves = stackalloc ushort[4];
         if (pk is PA8 { AlphaMove: not 0 } pa8)
         {
             moves[0] = pa8.AlphaMove;
-            learn.SetEncounterMovesBackwards(level, moves, 1);
+            learn.SetEncounterMovesBackwards(metLevel, moves, 1);
         }
         else
         {
-            learn.SetEncounterMoves(level, moves);
+            learn.SetEncounterMoves(metLevel, moves);
         }
 
-        return p.IsValidMasteredEncounter(moves, learn, mastery, level, alpha, allowAlphaPurchaseBug);
+        return p.IsValidMasteredEncounter(moves, learn, mastery, metLevel, alpha, allowAlphaPurchaseBug);
     }
     #endregion
 
-    public bool TryGetSeed(PKM pk, out ulong seed)
+    public SeedCorrelationResult TryGetSeed(PKM pk, out ulong seed)
     {
         // Check if it matches any single-roll seed.
         var pi = PersonalTable.LA[Species, Form];
-        var param = GetParams(pi) with { RollCount = 1 };
+        var rollCount = (byte)(1 + GetRollCountBoost(Type));
+        var param = GetParams(pi, rollCount);
         var solver = new XoroMachineSkip(pk.EncryptionConstant, pk.PID);
         foreach (var s in solver)
         {
             if (!Overworld8aRNG.Verify(pk, s, param))
                 continue;
             seed = s;
-            return true;
+            return SeedCorrelationResult.Success;
         }
         seed = 0;
-        return false;
+        return SeedCorrelationResult.Ignore;
     }
 }

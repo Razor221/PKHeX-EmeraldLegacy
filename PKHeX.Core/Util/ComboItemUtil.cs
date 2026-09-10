@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using static PKHeX.Core.MessageStrings;
 using static PKHeX.Core.GeonetPoint;
+using static PKHeX.Core.MessageStrings;
 
 namespace PKHeX.Core;
 
@@ -9,7 +9,7 @@ public static partial class Util
 {
     public static List<ComboItem> GetCountryRegionList(string textFile, string lang)
     {
-        string[] inputCSV = GetStringList(textFile);
+        var inputCSV = GetStringList(textFile);
         int index = GeoLocation.GetLanguageIndex(lang);
         var list = GetCBListFromCSV(inputCSV, index);
         if (list.Count > 1)
@@ -46,6 +46,15 @@ public static partial class Util
         for (int i = 0; i < inStrings.Length; i++)
             list.Add(new ComboItem(inStrings[i], i));
         list.Sort(Comparer);
+        return list;
+    }
+
+    public static List<ComboItem> GetCBList<T>() where T : struct, Enum
+    {
+        var src = Enum.GetValues<T>();
+        var list = new List<ComboItem>(src.Length);
+        foreach (var value in src)
+            list.Add(new ComboItem(value.ToString(), Convert.ToInt32(value)));
         return list;
     }
 
@@ -128,21 +137,24 @@ public static partial class Util
         for (int i = 0; i < ballItemID.Length; i++)
             list[i] = new ComboItem(itemNames[ballItemID[i]], ballIndex[i]);
 
-        // 3 Balls are preferentially first, sort Master Ball with the rest Alphabetically.
+        // First 3 Balls (Poke, Great, Ultra) are preferentially first, sort Master Ball with the rest Alphabetically.
         list.AsSpan(3).Sort(Comparer);
         return list;
     }
 
+    /// <summary>
+    /// Comparer for <see cref="ComboItem"/> based on the <see cref="ComboItem.Text"/> property.
+    /// </summary>
     private static readonly FunctorComparer<ComboItem> Comparer =
         new((a, b) => string.CompareOrdinal(a.Text, b.Text));
 
-    private sealed class FunctorComparer<T>(Comparison<T> Comparison) : IComparer<T>
+    private sealed class FunctorComparer<T>(Comparison<T> Comparison) : IComparer<T> where T : notnull
     {
         public int Compare(T? x, T? y)
         {
-            if (x == null)
-                return y == null ? 0 : -1;
-            return y == null ? 1 : Comparison(x, y);
+            if (x is null)
+                return y is null ? 0 : -1;
+            return y is null ? 1 : Comparison(x, y);
         }
     }
 }

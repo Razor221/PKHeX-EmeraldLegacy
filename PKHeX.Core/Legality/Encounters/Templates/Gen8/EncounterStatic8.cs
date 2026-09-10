@@ -27,7 +27,7 @@ public sealed record EncounterStatic8(GameVersion Version = GameVersion.SWSH)
     public Crossover8 Crossover { get; init; }
     public AreaWeather8 Weather { get; init; } = AreaWeather8.Normal;
     public byte DynamaxLevel { get; init; }
-    public Nature Nature { get; init; }
+    public Nature Nature { get; init; } = Nature.Random;
     public Shiny Shiny { get; init; }
     public AbilityPermission Ability { get; init; }
     public byte Gender { get; init; } = FixedGenderUtil.GenderRandom;
@@ -72,8 +72,8 @@ public sealed record EncounterStatic8(GameVersion Version = GameVersion.SWSH)
 
     public PK8 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pk = new PK8
         {
             Species = Species,
@@ -87,12 +87,12 @@ public sealed record EncounterStatic8(GameVersion Version = GameVersion.SWSH)
 
             ID32 = tr.ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = tr.Gender,
             OriginalTrainerName = tr.OT,
             OriginalTrainerFriendship = PersonalTable.SWSH[Species, Form].BaseFriendship,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
 
             DynamaxLevel = DynamaxLevel,
             CanGigantamax = CanGigantamax,
@@ -104,19 +104,22 @@ public sealed record EncounterStatic8(GameVersion Version = GameVersion.SWSH)
             pk.SetMoves(Moves);
         else
             EncounterUtil.SetEncounterMoves(pk, version, Level);
+        if (Relearn.HasMoves)
+            pk.SetRelearnMoves(Relearn);
+
         pk.ResetPartyStats();
 
         return pk;
     }
 
-    private void SetPINGA(PK8 pk, EncounterCriteria criteria)
+    private void SetPINGA(PK8 pk, in EncounterCriteria criteria)
     {
         if (Weather is AreaWeather8.Heavy_Fog && EncounterArea8.IsBoostedArea60Fog(Location))
             pk.MetLevel = pk.CurrentLevel = EncounterArea8.BoostLevel;
 
         var pi = PersonalTable.SWSH[Species, Form];
         pk.RefreshAbility(criteria.GetAbilityFromNumber(Ability));
-        pk.Nature = pk.StatNature = criteria.GetNature();
+        pk.Nature = pk.StatAlignment = criteria.GetNature();
         pk.Gender = criteria.GetGender(Gender, pi);
 
         var req = GetRequirement(pk);
@@ -147,7 +150,7 @@ public sealed record EncounterStatic8(GameVersion Version = GameVersion.SWSH)
             return false;
         if (!IsMatchLocation(pk))
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (pk is PK8 d && d.DynamaxLevel < DynamaxLevel)
             return false;
@@ -162,12 +165,6 @@ public sealed record EncounterStatic8(GameVersion Version = GameVersion.SWSH)
         if (FlawlessIVCount != 0 && pk.FlawlessIVCount < FlawlessIVCount)
             return false;
         return true;
-    }
-
-    private static bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = pk is PB8 ? Locations.Default8bNone : 0;
-        return pk.EggLocation == expect;
     }
 
     private bool IsMatchLocation(PKM pk)

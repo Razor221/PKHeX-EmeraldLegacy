@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace PKHeX.Core;
 
@@ -17,27 +18,70 @@ public static class SaveFinder
     /// <param name="drives">List of drives on the host machine.</param>
     /// <param name="skipFirstDrive">Optional parameter to skip the first drive.
     /// The first drive is usually the system hard drive, or can be a floppy disk drive (slower to check, never has expected data).</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>Folder path pointing to the Nintendo 3DS folder.</returns>
-    public static string? Get3DSLocation(IEnumerable<string> drives, bool skipFirstDrive = true) =>
-        FindConsoleRootFolder(drives, "Nintendo 3DS", skipFirstDrive);
+    public static string? Get3DSLocation(IEnumerable<string> drives, bool skipFirstDrive, CancellationToken token) =>
+        FindConsoleRootFolder(drives, "Nintendo 3DS", skipFirstDrive, token);
 
     /// <summary>
     /// Searches the provided <see cref="drives"/> to find a valid Switch drive, usually from an inserted SD card.
     /// </summary>
     /// <param name="drives">List of drives on the host machine.</param>
-    /// <param name="skipFirstDrive">Optional parameter to skip the first drive.
-    /// The first drive is usually the system hard drive, or can be a floppy disk drive (slower to check, never has expected data).</param>
+    /// <param name="skipFirstDrive">Optional parameter to skip the first drive.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>Folder path pointing to the Nintendo folder.</returns>
-    public static string? GetSwitchLocation(IEnumerable<string> drives, bool skipFirstDrive = true) =>
-        FindConsoleRootFolder(drives, "Nintendo", skipFirstDrive);
+    public static string? GetSwitchLocation(IEnumerable<string> drives, bool skipFirstDrive, CancellationToken token) =>
+        FindConsoleRootFolder(drives, "Nintendo", skipFirstDrive, token);
 
-    private static string? FindConsoleRootFolder(IEnumerable<string> drives, [ConstantExpected] string path, bool skipFirstDrive)
+    private static string? FindConsoleRootFolder(IEnumerable<string> drives, [ConstantExpected] string path, bool skipFirstDrive, CancellationToken token)
     {
-        if (skipFirstDrive)
-            drives = drives.Skip(1);
+        foreach (var drive in GetUsableDrives(drives, skipFirstDrive, token))
+        {
+            if (token.IsCancellationRequested)
+                break;
 
-        var paths = drives.Select(drive => Path.Combine(drive, path));
-        return paths.FirstOrDefault(Directory.Exists);
+            var candidate = Path.Combine(drive, path);
+            // Directory.Exists is synchronous and cannot itself be cancelled.
+            // Slow/unresponsive external drives can really drag execution.
+            if (Directory.Exists(candidate))
+                return candidate;
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> GetUsableDrives(IEnumerable<string> drives, bool skipFirstDrive, CancellationToken token)
+    {
+        var first = true;
+        foreach (var drive in drives)
+        {
+            if (token.IsCancellationRequested)
+                yield break;
+
+            if (skipFirstDrive && first)
+            {
+                first = false;
+                continue;
+            }
+
+            first = false;
+            if (IsUsableDrive(drive))
+                yield return drive;
+        }
+    }
+
+    private static bool IsUsableDrive(string drive)
+    {
+        try
+        {
+            var type = new DriveInfo(drive).DriveType;
+            return type is DriveType.Fixed or DriveType.Removable or DriveType.Ram;
+            // ignore Network, CDRom, NoRootDirectory, and Unknown
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -76,28 +120,43 @@ public static class SaveFinder
     /// Finds a compatible save file that was most recently saved (by file write time).
     /// </summary>
     /// <param name="drives">List of drives on the host machine.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <param name="extra">Paths to check in addition to the default paths</param>
     /// <returns>Reference to a valid save file, if any.</returns>
-    public static SaveFile? FindMostRecentSaveFile(IReadOnlyList<string> drives, params string[] extra)
-        => FindMostRecentSaveFile(drives, (IEnumerable<string>)extra);
+    public static SaveFile? FindMostRecentSaveFile(IReadOnlyList<string> drives, CancellationToken token, params string[] extra)
+        => FindMostRecentSaveFile(drives, extra, token);
 
     /// <summary>
     /// Finds a compatible save file that was most recently saved (by file write time).
     /// </summary>
     /// <param name="drives">List of drives on the host machine.</param>
     /// <param name="extra">Paths to check in addition to the default paths</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>Reference to a valid save file, if any.</returns>
-    public static SaveFile? FindMostRecentSaveFile(IReadOnlyList<string> drives, IEnumerable<string> extra)
+    public static SaveFile? FindMostRecentSaveFile(IReadOnlyList<string> drives, IEnumerable<string> extra, CancellationToken token)
     {
-        var foldersToCheck = GetFoldersToCheck(drives, extra);
-        var result = GetSaveFilePathsFromFolders(foldersToCheck, true, out var possiblePaths);
+        if (token.IsCancellationRequested)
+            return null;
+
+        var foldersToCheck = GetFoldersToCheck(drives, extra, token);
+        var result = GetSaveFilePathsFromFolders(foldersToCheck, true, out var possiblePaths, token);
         if (!result)
             throw new FileNotFoundException(string.Join(Environment.NewLine, possiblePaths)); // `possiblePaths` contains the error message
 
-        // return newest save file path that is valid
-        var byMostRecent = possiblePaths.OrderByDescending(File.GetLastWriteTimeUtc);
-        var saves = byMostRecent.Select(SaveUtil.GetVariantSAV);
-        return saves.FirstOrDefault(z => z?.ChecksumsValid == true);
+        if (token.IsCancellationRequested)
+            return null;
+
+        foreach (var path in possiblePaths.OrderByDescending(File.GetLastWriteTimeUtc))
+        {
+            if (token.IsCancellationRequested)
+                break;
+
+            var save = SaveUtil.GetSaveFile(path);
+            if (save?.ChecksumsValid == true)
+                return save;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -107,44 +166,60 @@ public static class SaveFinder
     /// <param name="detect">Detect save files stored in common SD card homebrew locations.</param>
     /// <param name="extra">Paths to check in addition to the default paths</param>
     /// <param name="ignoreBackups">Option to ignore backup files.</param>
+    /// <param name="token">Cancellation token to cancel the operation.</param>
     /// <returns>Valid save files, if any.</returns>
-    public static IEnumerable<SaveFile> GetSaveFiles(IReadOnlyList<string> drives, bool detect, IEnumerable<string> extra, bool ignoreBackups)
+    public static IEnumerable<SaveFile> GetSaveFiles(IReadOnlyList<string> drives, bool detect, IEnumerable<string> extra, bool ignoreBackups, CancellationToken token)
     {
-        var paths = detect ? GetFoldersToCheck(drives, extra) : extra;
-        var result = GetSaveFilePathsFromFolders(paths, ignoreBackups, out var possiblePaths);
+        var paths = detect ? GetFoldersToCheck(drives, extra, token) : extra;
+        var result = GetSaveFilePathsFromFolders(paths, ignoreBackups, out var possiblePaths, token);
         if (!result)
             yield break;
 
-        var byMostRecent = possiblePaths.OrderByDescending(File.GetLastWriteTimeUtc);
-        foreach (var s in byMostRecent)
+        foreach (var s in possiblePaths.OrderByDescending(File.GetLastWriteTimeUtc))
         {
-            var sav = SaveUtil.GetVariantSAV(s);
-            if (sav != null)
+            if (token.IsCancellationRequested)
+                yield break;
+            if (SaveUtil.TryGetSaveFile(s, out var sav))
                 yield return sav;
         }
     }
 
-    public static IEnumerable<string> GetFoldersToCheck(IReadOnlyList<string> drives, IEnumerable<string> extra)
+    public static IEnumerable<string> GetFoldersToCheck(IReadOnlyList<string> drives, IEnumerable<string> extra, CancellationToken token)
     {
-        var foldersToCheck = extra.Where(f => !string.IsNullOrWhiteSpace(f)).Concat(CustomBackupPaths);
+        if (token.IsCancellationRequested)
+            return [];
 
-        string? path3DS = Path.GetPathRoot(Get3DSLocation(drives));
+        var foldersToCheck = new List<string>();
+        foreach (var folder in extra)
+        {
+            if (!string.IsNullOrWhiteSpace(folder))
+                foldersToCheck.Add(folder);
+        }
+
+        foldersToCheck.AddRange(CustomBackupPaths);
+        string? path3DS = Path.GetPathRoot(Get3DSLocation(drives, true, token));
         if (!string.IsNullOrEmpty(path3DS)) // check for Homebrew/CFW backups
-            foldersToCheck = foldersToCheck.Concat(Get3DSBackupPaths(path3DS));
+            foldersToCheck.AddRange(Get3DSBackupPaths(path3DS));
 
-        string? pathNX = Path.GetPathRoot(GetSwitchLocation(drives));
+        if (token.IsCancellationRequested)
+            return foldersToCheck;
+
+        string? pathNX = Path.GetPathRoot(GetSwitchLocation(drives, true, token));
         if (!string.IsNullOrEmpty(pathNX)) // check for Homebrew/CFW backups
-            foldersToCheck = foldersToCheck.Concat(GetSwitchBackupPaths(pathNX));
+            foldersToCheck.AddRange(GetSwitchBackupPaths(pathNX));
 
         return foldersToCheck;
     }
 
-    private static bool GetSaveFilePathsFromFolders(IEnumerable<string> foldersToCheck, bool ignoreBackups, out IEnumerable<string> possible)
+    private static bool GetSaveFilePathsFromFolders(IEnumerable<string> foldersToCheck, bool ignoreBackups, out IEnumerable<string> possible, CancellationToken token)
     {
         var possiblePaths = new List<string>();
         foreach (var folder in foldersToCheck)
         {
-            if (!SaveUtil.GetSavesFromFolder(folder, true, out IEnumerable<string> files, ignoreBackups))
+            if (token.IsCancellationRequested)
+                break;
+
+            if (!SaveUtil.GetSavesFromFolder(folder, true, token, out IEnumerable<string> files, ignoreBackups))
             {
                 if (files is not string[] msg) // should always return string[]
                     continue;
@@ -159,23 +234,25 @@ public static class SaveFinder
         return true;
     }
 
-    /// <inheritdoc cref="FindMostRecentSaveFile(IReadOnlyList{string},string[])"/>
-    public static SaveFile? FindMostRecentSaveFile() => FindMostRecentSaveFile(Environment.GetLogicalDrives(), CustomBackupPaths);
+    /// <inheritdoc cref="FindMostRecentSaveFile(IReadOnlyList{string},CancellationToken,string[])"/>
+    public static SaveFile? FindMostRecentSaveFile(CancellationToken token) => FindMostRecentSaveFile(DriveList, CustomBackupPaths, token);
 
     /// <inheritdoc cref="GetSaveFiles"/>
-    public static IEnumerable<SaveFile> DetectSaveFiles() => GetSaveFiles(Environment.GetLogicalDrives(), true, CustomBackupPaths, true);
+    public static IEnumerable<SaveFile> DetectSaveFiles(CancellationToken token) => GetSaveFiles(DriveList, true, CustomBackupPaths, true, token);
 
     /// <returns>
     /// True if a valid save file was found, false otherwise.
     /// </returns>
-    /// <inheritdoc cref="FindMostRecentSaveFile(IReadOnlyList{string},string[])"/>
-    public static bool TryDetectSaveFile([NotNullWhen(true)] out SaveFile? sav) => TryDetectSaveFile(Environment.GetLogicalDrives(), out sav);
+    /// <inheritdoc cref="FindMostRecentSaveFile(IReadOnlyList{string},CancellationToken,string[])"/>
+    public static bool TryDetectSaveFile(CancellationToken token, [NotNullWhen(true)] out SaveFile? result) => TryDetectSaveFile(DriveList, token, out result);
 
-    /// <inheritdoc cref="TryDetectSaveFile(out SaveFile)"/>
-    public static bool TryDetectSaveFile(IReadOnlyList<string> drives, [NotNullWhen(true)] out SaveFile? sav)
+    /// <inheritdoc cref="TryDetectSaveFile(CancellationToken, out SaveFile)"/>
+    public static bool TryDetectSaveFile(IReadOnlyList<string> drives, CancellationToken token, [NotNullWhen(true)] out SaveFile? result)
     {
-        sav = FindMostRecentSaveFile(drives, CustomBackupPaths);
-        var path = sav?.Metadata.FilePath;
+        result = FindMostRecentSaveFile(drives, CustomBackupPaths, token);
+        var path = result?.Metadata.FilePath;
         return File.Exists(path);
     }
+
+    private static string[] DriveList => Environment.GetLogicalDrives();
 }

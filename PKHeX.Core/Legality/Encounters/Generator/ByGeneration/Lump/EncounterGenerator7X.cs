@@ -7,16 +7,17 @@ public sealed class EncounterGenerator7X : IEncounterGenerator
     public static readonly EncounterGenerator7X Instance = new();
     public bool CanGenerateEggs => false;
 
-    public IEnumerable<IEncounterable> GetPossible(PKM pk, EvoCriteria[] chain, GameVersion game, EncounterTypeGroup groups) => pk.Version switch
+    public IEnumerable<IEncounterable> GetPossible(PKM pk, EvoCriteria[] chain, GameVersion version, EncounterTypeGroup groups) => pk.Version switch
     {
-        GameVersion.GO => EncounterGenerator7GO.Instance.GetPossible(pk, chain, game, groups),
-        > GameVersion.GO => EncounterGenerator7GG.Instance.GetPossible(pk, chain, game, groups),
-        _ => EncounterGenerator7.Instance.GetPossible(pk, chain, game, groups),
+        GameVersion.GO => EncounterGenerator7GO.Instance.GetPossible(pk, chain, version, groups),
+        > GameVersion.GO => EncounterGenerator7GG.Instance.GetPossible(pk, chain, version, groups),
+        _ => EncounterGenerator7.Instance.GetPossible(pk, chain, version, groups),
     };
 
     public IEnumerable<IEncounterable> GetEncounters(PKM pk, LegalInfo info)
     {
-        var chain = EncounterOrigin.GetOriginChain(pk, 7);
+        var context = pk.Version.IsGen7() ? EntityContext.Gen7 : EntityContext.Gen7b;
+        var chain = EncounterOrigin.GetOriginChain(pk, 7, context);
         return GetEncounters(pk, chain, info);
     }
 

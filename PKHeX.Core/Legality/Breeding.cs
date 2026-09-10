@@ -38,12 +38,13 @@ public static class Breeding
     };
 
     /// <summary>
-    /// Checks if the species <see cref="ec"/> is valid for the <see cref="gender"/> if originated from Gen3/4 daycare eggs.
+    /// Checks if the species <see cref="encryptionConstant"/> is valid for the <see cref="gender"/> if originated from Gen3/4 daycare eggs.
     /// </summary>
-    /// <param name="ec">Encryption Constant</param>
+    /// <remarks>Only applies to species that satisfy <see cref="IsGenderSpeciesDetermination"/>.</remarks>
+    /// <param name="encryptionConstant">Encryption Constant</param>
     /// <param name="gender">Gender</param>
     /// <returns>True if valid</returns>
-    public static bool IsValidSpeciesBit34(uint ec, byte gender) => gender != (ec & 0x8000) >> 15; // 1 = Male, 0 = Female, valid if different from Gender value.
+    public static bool IsValidSpeciesBit34(uint encryptionConstant, byte gender) => gender != (encryptionConstant & 0x8000) >> 15; // 1 = Male, 0 = Female, valid if different from Gender value.
 
     /// <summary>
     /// Checks if the <see cref="species"/> can be born with inherited moves from the parents.
@@ -52,8 +53,7 @@ public static class Breeding
     /// <returns>True if it can inherit moves, false if cannot.</returns>
     internal static bool GetCanInheritMoves(ushort species)
     {
-        var pi = PKX.Personal[species];
-        if (pi is { Genderless: false, OnlyMale: false })
+        if (EntityGender.IsFemaleOrDualGender(species))
             return true;
         if (IsMixedGenderBreed(species))
             return true;
@@ -130,6 +130,8 @@ public static class Breeding
     /// <summary>
     /// Some species can have forms that cannot exist as egg (event/special forms). Same idea as <see cref="FormInfo.IsTotemForm(ushort,byte,EntityContext)"/>
     /// </summary>
+    /// <param name="species">Current species</param>
+    /// <param name="form">Current form, not 0.</param>
     /// <returns>True if it can be bred.</returns>
     private static bool IsBreedableForm(ushort species, byte form) => species switch
     {

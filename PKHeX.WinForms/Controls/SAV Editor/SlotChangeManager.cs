@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Media;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using PKHeX.Core;
@@ -18,6 +17,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
 {
     public readonly SAVEditor SE = se;
     public readonly SlotTrackerImage LastSlot = new();
+    public PictureBox? Hovered { get; private set; }
     public readonly DragManager Drag = new();
     public SaveDataEditor<PictureBox> Env { get; set; } = null!;
 
@@ -34,72 +34,85 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
     {
         if (sender is not PictureBox pb)
             return;
+        MouseRestart(pb);
+    }
+
+    public void MouseRestart()
+    {
+        if (Hovered is { } pb)
+            MouseRestart(pb);
+    }
+
+    private void MouseRestart(PictureBox pb)
+    {
         bool dataPresent = pb.Image is not null;
         if (dataPresent)
             Hover.Start(pb, LastSlot);
+        Hovered = pb;
         pb.Cursor = dataPresent ? Cursors.Hand : Cursors.Default;
     }
 
     public void MouseLeave(object? sender, EventArgs e)
     {
         Hover.Stop();
+        Hovered = null;
     }
 
     public void MouseClick(object? sender, MouseEventArgs e)
     {
-        if (sender == null)
+        if (sender is null)
             return;
-        if (!Drag.Info.DragDropInProgress)
+        if (!Drag.Info.IsDragDropInProgress)
             SE.ClickSlot(sender, e);
     }
 
     public void MouseUp(object? sender, MouseEventArgs e)
     {
-        if (sender == null)
+        if (sender is null)
             return;
         if (e.Button == MouseButtons.Left)
-            Drag.Info.LeftMouseIsDown = false;
+            Drag.Info.IsLeftMouseDown = false;
         Drag.Info.Source = null;
     }
 
     public void MouseDown(object? sender, MouseEventArgs e)
     {
-        if (sender == null)
+        if (sender is null)
             return;
         if (e.Button == MouseButtons.Left)
         {
-            Drag.Info.LeftMouseIsDown = true;
+            Drag.Info.IsLeftMouseDown = true;
             Drag.MouseDownPosition = Cursor.Position;
         }
     }
 
     public void QueryContinueDrag(object? sender, QueryContinueDragEventArgs e)
     {
-        if (sender == null)
+        if (sender is null)
             return;
         if (e.Action != DragAction.Cancel && e.Action != DragAction.Drop)
             return;
-        Drag.Info.LeftMouseIsDown = false;
-        Drag.Info.DragDropInProgress = false;
+        Drag.Info.IsLeftMouseDown = false;
+        Drag.Info.IsDragDropInProgress = false;
     }
 
     public void DragEnter(object? sender, DragEventArgs e)
     {
-        if (sender == null)
+        if (sender is not Control c)
             return;
         if ((e.AllowedEffect & DragDropEffects.Copy) != 0) // external file
             e.Effect = DragDropEffects.Copy;
-        else if (e.Data != null) // within
+        else if (e.Data is not null) // within
             e.Effect = DragDropEffects.Move;
 
-        if (Drag.Info.DragDropInProgress)
-            Drag.SetCursor(((Control)sender).FindForm(), Drag.Info.Cursor);
+        if (Drag.Info.IsDragDropInProgress)
+            Drag.SetCursor(c, Drag.Info.Cursor);
     }
 
     private static SlotViewInfo<T> GetSlotInfo<T>(T pb) where T : Control
     {
-        var view = WinFormsUtil.FindFirstControlOfType<ISlotViewer<T>>(pb);
-        ArgumentNullException.ThrowIfNull(view);
+        if (!WinFormsUtil.TryFindFirstControlOfType<ISlotViewer<T>>(pb, out var view))
+            ArgumentNullException.ThrowIfNull(view);
         var src = view.GetSlotData(pb);
         return new SlotViewInfo<T>(src, view);
     }
@@ -115,7 +128,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
             return;
 
         // Abort if there is no Pokémon in the given slot.
-        if (pb.Image == null)
+        if (pb.Image is null)
             return;
         bool encrypt = Control.ModifierKeys == Keys.Control;
         HandleMovePKM(pb, encrypt);
@@ -128,7 +141,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         var info = GetSlotInfo(pb);
         if (!info.CanWriteTo() || Drag.Info.Source?.CanWriteTo() == false)
         {
-            SystemSounds.Asterisk.Play();
+            WinFormsUtil.Asterisk();
             e.Effect = DragDropEffects.Copy;
             Drag.Reset();
             return;
@@ -144,7 +157,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         // Create a temporary PKM file to perform a drag drop operation.
 
         // Set flag to prevent re-entering.
-        Drag.Info.DragDropInProgress = true;
+        Drag.Info.IsDragDropInProgress = true;
 
         // Prepare Data
         Drag.Info.Source = GetSlotInfo(pb);
@@ -156,14 +169,14 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         // drop finished, clean up
         Drag.Info.Source = null;
         Drag.Reset();
-        Drag.ResetCursor(pb.FindForm());
+        Drag.ResetCursor(pb);
 
         // Browser apps need time to load data since the file isn't moved to a location on the user's local storage.
         // Tested 10ms -> too quick, 100ms was fine. 500ms should be safe?
         // Keep it to 20 seconds; Discord upload only stores the file path until you click Upload.
         int delay = external ? 20_000 : 0;
         DeleteAsync(newfile, delay);
-        if (Drag.Info.DragIsParty)
+        if (Drag.Info.IsDragParty)
             SE.SetParty();
     }
 
@@ -191,7 +204,12 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         string newfile = FileUtil.GetPKMTempFileName(pk, encrypt);
         try
         {
-            var data = encrypt ? pk.EncryptedPartyData : pk.DecryptedPartyData;
+            pk.ForcePartyData();
+            Span<byte> data = stackalloc byte[pk.SIZE_PARTY];
+            if (!encrypt)
+                pk.WriteDecryptedDataParty(data);
+            else
+                pk.WriteEncryptedDataParty(data);
             external = TryMakeDragDropPKM(pb, data, newfile);
         }
         // Tons of things can happen with drag & drop; don't try to handle things, just indicate failure.
@@ -204,12 +222,13 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         return newfile;
     }
 
-    private bool TryMakeDragDropPKM(PictureBox pb, byte[] data, string newfile)
+    private bool TryMakeDragDropPKM(PictureBox pb, ReadOnlySpan<byte> data, string newfile)
     {
+        var img = pb.Image as Bitmap;
+        ArgumentNullException.ThrowIfNull(img);
         File.WriteAllBytes(newfile, data);
-        if (pb.Image is not Bitmap img)
-            return false;
-        Drag.SetCursor(pb.FindForm(), new Cursor(img.GetHicon()));
+
+        Drag.SetOwnedCursor(pb, img);
         Hover.Stop();
         pb.Image = null;
         pb.BackgroundImage = SpriteUtil.Spriter.Drag;
@@ -217,18 +236,18 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         // Thread Blocks on DoDragDrop
         Drag.Info.CurrentPath = newfile;
         var result = pb.DoDragDrop(new DataObject(DataFormats.FileDrop, new[] { newfile }), DragDropEffects.Copy);
-        var external = Drag.Info.Destination == null || result != DragDropEffects.Link;
-        if (external || Drag.Info.SameLocation) // not dropped to another box slot, restore img
+        var external = Drag.Info.Destination is null || result != DragDropEffects.Link;
+        if (external || Drag.Info.IsDragSameLocation) // not dropped to another box slot, restore img
         {
             pb.Image = img;
             pb.BackgroundImage = LastSlot.OriginalBackground;
-            Drag.ResetCursor(pb.FindForm());
+            Drag.ResetCursor(pb);
             return external;
         }
 
         if (result == DragDropEffects.Copy) // viewed in tabs or cloned
         {
-            if (Drag.Info.Destination == null) // apply 'view' highlight
+            if (Drag.Info.Destination is null) // apply 'view' highlight
                 Env.Slots.Get(Drag.Info.Source!.Slot);
             return false;
         }
@@ -245,7 +264,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
 
         if (Directory.Exists(files[0])) // folder
         {
-            SE.LoadBoxes(out string _, files[0]);
+            SE.LoadBoxes(out _, files[0]);
             Drag.Reset();
             return;
         }
@@ -253,7 +272,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         e.Effect = mod == DropModifier.Clone ? DragDropEffects.Copy : DragDropEffects.Link;
 
         // file
-        if (Drag.Info.SameLocation)
+        if (Drag.Info.IsDragSameLocation)
         {
             e.Effect = DragDropEffects.Link;
             return;
@@ -261,7 +280,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
 
         var dest = Drag.Info.Destination;
 
-        if (Drag.Info.Source == null) // external source
+        if (Drag.Info.Source is null) // external source
         {
             bool badDest = !dest!.CanWriteTo();
             if (!TryLoadFiles(files, e, badDest))
@@ -289,14 +308,14 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         var sav = Drag.Info.Destination!.View.SAV;
         var path = files[0];
         var temp = FileUtil.GetSingleFromPath(path, sav);
-        if (temp == null)
+        if (temp is null)
         {
             Drag.RequestDD(this, e); // pass through
             return true; // treat as handled
         }
 
         var pk = EntityConverter.ConvertToType(temp, sav.PKMType, out var result);
-        if (pk == null)
+        if (pk is null)
         {
             var c = result.GetDisplayString(temp, sav.PKMType);
             WinFormsUtil.Error(c);
@@ -340,13 +359,13 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
         if (msg != WriteBlockedMessage.None)
             return false;
 
-        if (Drag.Info.Source != null)
+        if (Drag.Info.Source is not null)
             TrySetPKMSource(mod);
 
         // Copy from temp to destination slot.
-        var type = info.DragIsSwap ? SlotTouchType.Swap : SlotTouchType.Set;
+        var type = info.IsDragSwap ? SlotTouchType.Swap : SlotTouchType.Set;
         Env.Slots.Set(info.Destination!.Slot, pk, type);
-        Drag.ResetCursor(pb.FindForm());
+        Drag.ResetCursor(pb);
         return true;
     }
 
@@ -354,7 +373,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
     {
         var info = Drag.Info;
         var dest = info.Destination;
-        if (dest == null || mod == DropModifier.Clone)
+        if (dest is null || mod == DropModifier.Clone)
             return false;
 
         if (dest.IsEmpty() || mod == DropModifier.Overwrite)
@@ -363,7 +382,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
             return true;
         }
 
-        var type = info.DragIsSwap ? SlotTouchType.Swap : SlotTouchType.Set;
+        var type = info.IsDragSwap ? SlotTouchType.Swap : SlotTouchType.Set;
         var pk = dest.ReadCurrent();
         Env.Slots.Set(Drag.Info.Source!.Slot, pk, type);
         return true;
@@ -380,6 +399,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
 
     public void Dispose()
     {
+        Drag.Dispose();
         Hover.Dispose();
         SE.Dispose();
         LastSlot.OriginalBackground?.Dispose();

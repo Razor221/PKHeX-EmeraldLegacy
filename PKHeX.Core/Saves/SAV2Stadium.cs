@@ -6,17 +6,17 @@ namespace PKHeX.Core;
 /// <summary>
 /// Pokémon Stadium 2 (Pokémon Stadium GS in Japan)
 /// </summary>
-public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
+public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName, IStorageCleanup
 {
     public override int SaveRevision => Japanese ? 0 : 1;
-    public override string SaveRevisionString => Japanese ? "J" : "U";
+    public override string SaveRevisionString => Japanese ? "-J" : "-U";
 
     public override PersonalTable2 Personal => PersonalTable.C;
     public override int MaxEV => EffortValues.Max12;
     public override ReadOnlySpan<ushort> HeldItems => Legal.HeldItems_GSC;
     public override GameVersion Version { get => GameVersion.Stadium2; set { } }
 
-    protected override SAV2Stadium CloneInternal() => new((byte[])Data.Clone(), Japanese);
+    protected override SAV2Stadium CloneInternal() => new(Data.ToArray(), Japanese);
 
     public override byte Generation => 2;
     public override EntityContext Context => EntityContext.Gen2;
@@ -33,11 +33,11 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
 
     public override Type PKMType => typeof(SK2);
     public override SK2 BlankPKM => new(Japanese);
-    protected override SK2 GetPKM(byte[] data) => new(data, Japanese);
+    protected override SK2 GetPKM(Memory<byte> data) => new(data, Japanese);
 
     private const int SIZE_SK2 = PokeCrypto.SIZE_2STADIUM; // 60
-    protected override int SIZE_STORED => SIZE_SK2;
-    protected override int SIZE_PARTY => SIZE_SK2;
+    public override int SIZE_STORED => SIZE_SK2;
+    public override int SIZE_PARTY => SIZE_SK2;
 
     private const int ListHeaderSizeTeam = 0x10;
     private const int ListHeaderSizeBox = 0x20;
@@ -57,11 +57,12 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
 
     private const uint MAGIC_FOOTER = 0x30763350; // P3v0
 
-    public SAV2Stadium(byte[] data) : this(data, IsStadiumJ(data)) { }
+    public SAV2Stadium(Memory<byte> data) : this(data, IsStadiumJ(data.Span)) { }
 
-    public SAV2Stadium(byte[] data, bool japanese) : base(data, japanese, GetIsSwap(data, japanese))
+    public SAV2Stadium(Memory<byte> data, bool japanese) : base(data, japanese, GetIsSwap(data.Span, japanese))
     {
         Box = BoxStart;
+        ConditionBoxes();
     }
 
     public SAV2Stadium(bool japanese = false) : base(japanese, SaveUtil.SIZE_G2STAD)
@@ -80,10 +81,19 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
     {
         var boxOfs = GetBoxOffset(box) - ListHeaderSizeBox;
         var size = BoxSize - 2;
-        var chk = Checksums.CheckSum16(new ReadOnlySpan<byte>(Data, boxOfs, size));
-        var actual = ReadUInt16BigEndian(Data.AsSpan(boxOfs + size));
+        var chk = Checksums.CheckSum16(Data.Slice(boxOfs, size));
+        var actual = ReadUInt16BigEndian(Data[(boxOfs + size)..]);
         return chk == actual;
     }
+
+    // Box Structure:
+    // 0x00: 1 byte: initialized (1) or not (0)
+    // 0x01: 1 byte: count of present slots
+    // 0x02: 2 bytes: reserved
+    // 0x04: 0x50 (String?)
+    // 0x10: 16 bytes: box name (0x50-terminated)
+    // 0x20: SK2[n] slots
+    // ....: 0x00, 0x00, u32 Magic, u16 Checksum
 
     protected override void SetBoxMetadata(int box)
     {
@@ -99,27 +109,29 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
         }
 
         var boxOfs = bdata - ListHeaderSizeBox;
-        var slice = Data.AsSpan(boxOfs, ListHeaderSizeBox);
-        if (slice[0] == 0)
+        var header = Data.Slice(boxOfs, ListHeaderSizeBox);
+        if (header[0] == 0)
         {
-            slice[0] = 1;
-            slice[1] = (byte)count;
-            slice[4] = StringConverter2.TerminatorCode;
+            // Initialize with current count and a fake box name. This is only done for uninitialized boxes.
+            header[0] = 1;
+            header[4] = StringConverter2.TerminatorCode;
+
+            // Write a fake box name
             for (int i = 0; i < 4; i++)
-                slice[0x10 + i] = (byte)(0xF6 + i); // 1234
+                header[0x10 + i] = (byte)(0xF6 + i); // 1234
+            header[0x14] = StringConverter2.TerminatorCode;
         }
-        else
-        {
-            slice[1] = (byte)count;
-        }
+        header[1] = (byte)count;
     }
+
+    private byte GetBoxSlotCount(int boxDataStart) => Data[boxDataStart - ListHeaderSizeBox + 1];
 
     protected override void SetBoxChecksum(int box)
     {
         var boxOfs = GetBoxOffset(box) - ListHeaderSizeBox;
         var size = BoxSize - 2;
-        var chk = Checksums.CheckSum16(new ReadOnlySpan<byte>(Data, boxOfs, size));
-        WriteUInt16BigEndian(Data.AsSpan(boxOfs + size), chk);
+        var chk = Checksums.CheckSum16(Data.Slice(boxOfs, size));
+        WriteUInt16BigEndian(Data[(boxOfs + size)..], chk);
     }
 
     public static int GetTeamOffset(Stadium2TeamType type, int team)
@@ -144,17 +156,17 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
         var name = $"{((Stadium2TeamType) (team / TeamCountType)).ToString().Replace('_', ' ')} {(team % 10) + 1}";
 
         var ofs = GetTeamOffset(team);
-        var str = GetString(Data.AsSpan(ofs + 4, 7));
+        var str = GetString(Data.Slice(ofs + 4, 7));
         if (string.IsNullOrWhiteSpace(str))
             return name;
-        var id = ReadUInt16BigEndian(Data.AsSpan(ofs + 2));
+        var id = ReadUInt16BigEndian(Data[(ofs + 2)..]);
         return $"{name} [{id:D5}:{str}]";
     }
 
     public string GetBoxName(int box)
     {
         var ofs = GetBoxOffset(box) - 0x10;
-        var boxNameSpan = Data.AsSpan(ofs, 0x10);
+        var boxNameSpan = Data.Slice(ofs, 0x10);
         var str = GetString(boxNameSpan);
         if (string.IsNullOrWhiteSpace(str))
             return BoxDetailNameExtensions.GetDefaultBoxName(box);
@@ -166,7 +178,7 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
         if (name.Length > StringLength)
             throw new ArgumentOutOfRangeException(nameof(name), "Box name is too long.");
         var ofs = GetBoxOffset(box) - 0x10;
-        var boxNameSpan = Data.AsSpan(ofs, 0x10);
+        var boxNameSpan = Data.Slice(ofs, 0x10);
         SetString(boxNameSpan, name, StringLength, StringConverterOption.None);
     }
 
@@ -181,9 +193,9 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
         for (int i = 0; i < 6; i++)
         {
             var rel = ofs + ListHeaderSizeTeam + (i * SIZE_STORED);
-            members[i] = (SK2)GetStoredSlot(Data.AsSpan(rel));
+            members[i] = (SK2)GetStoredSlot(Data[rel..]);
         }
-        return new SlotGroup(name, members);
+        return new SlotGroup(name, members, StorageSlotType.Box);
     }
 
     public override int GetBoxOffset(int box)
@@ -217,13 +229,13 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
     {
         var ofs = MailboxBlockOffset(Language);
         var size = MailboxBlockSize - 2;
-        var chk = Checksums.CheckSum16(new ReadOnlySpan<byte>(Data, ofs, size));
-        WriteUInt16BigEndian(Data.AsSpan(ofs + size), chk);
+        var chk = Checksums.CheckSum16(Data.Slice(ofs, size));
+        WriteUInt16BigEndian(Data[(ofs + size)..], chk);
 
         var ofsHeld = MailboxHeldBlockOffset(Language);
         var sizeHeld = MailboxHeldBlockSize - 2;
-        var chkHeld = Checksums.CheckSum16(new ReadOnlySpan<byte>(Data, ofsHeld, sizeHeld));
-        WriteUInt16BigEndian(Data.AsSpan(ofsHeld + sizeHeld), chkHeld);
+        var chkHeld = Checksums.CheckSum16(Data.Slice(ofsHeld, sizeHeld));
+        WriteUInt16BigEndian(Data[(ofsHeld + sizeHeld)..], chkHeld);
     }
     #endregion
 
@@ -237,6 +249,63 @@ public sealed class SAV2Stadium : SAV_STADIUM, IBoxDetailName
         if (japanese)
             return StadiumUtil.IsMagicPresentSwap(boxSpan, BoxSizeJ, MAGIC_FOOTER, 1);
         return StadiumUtil.IsMagicPresentSwap(boxSpan, BoxSizeU, MAGIC_FOOTER, 1);
+    }
+
+    private void ConditionBoxes()
+    {
+        var blank = BlankPKM;
+        for (int i = 0; i < BoxCount; i++)
+        {
+            // If the box is uninitialized, reset it to the right state.
+            var ofs = GetBoxOffset(i);
+
+            // Wipe empty slots after the count; don't display ghost slots.
+            var count = GetBoxSlotCount(ofs);
+            if (count >= BoxSlotCount)
+                continue; // already full
+
+            // Fill empty slots with blank PKM so that arbitrary reads are correct
+            // If you want to see the ghost slots, add your own code to `continue` instead of doing the loop.
+            for (int s = count; s < BoxSlotCount; s++)
+            {
+                var rel = ofs + (s * SIZE_STORED);
+                var slice = Data.Slice(rel, SIZE_STORED);
+                var species = slice[0];
+                if (species == 0) // don't bother converting from internal->national
+                    continue; // don't bother wiping already-empty slots.
+                WriteSlotBox(blank, slice);
+            }
+        }
+    }
+
+    public bool FixStoragePreWrite()
+    {
+        // Compress the storage.
+        bool anyShifted = false;
+        // For each box, move present slots to the front.
+        for (int i = 0; i < BoxCount; i++)
+        {
+            int present = 0;
+            var ofs = GetBoxOffset(i);
+            for (int s = 0; s < BoxSlotCount; s++)
+            {
+                var rel = ofs + (s * SIZE_STORED);
+                var species = Data[rel];
+                if (species == 0)
+                    continue;
+                if (present != s)
+                {
+                    anyShifted = true;
+                    var upSlot = Data[(ofs + (present * SIZE_STORED))..];
+                    var src = Data.Slice(rel, SIZE_STORED);
+                    src.CopyTo(upSlot);
+                    // wipe the old slot
+                    src.Clear();
+                }
+                present++;
+            }
+        }
+        return anyShifted;
     }
 }
 

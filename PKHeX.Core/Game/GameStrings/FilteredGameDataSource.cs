@@ -12,9 +12,11 @@ public sealed class FilteredGameDataSource
     public FilteredGameDataSource(SaveFile sav, GameDataSource source, bool HaX = false)
     {
         Source = source;
-        Species = GetFilteredSpecies(sav, source, HaX).ToList();
-        Moves = GetFilteredMoves(sav, source, HaX).ToList();
-        Relearn = GetFilteredMoves(sav.BlankPKM, source, HaX).ToList(); // allow for US/UM relearn move limits on S/M
+        Species = GetFilteredSpecies(sav, source.SpeciesDataSource, HaX);
+        Moves = GetFilteredMoves(sav, sav.Context, source, HaX);
+        Relearn = sav is SAV7SM sm
+            ? GetFilteredMoves(sm.Context, source, HaX, Legal.MaxMoveID_7_USUM) // allow for US/UM relearn move limits on S/M
+            : Moves.ToList();
         if (sav.Generation > 1)
         {
             var items = Source.GetItemDataSource(sav.Version, sav.Context, sav.HeldItems, HaX);
@@ -26,54 +28,82 @@ public sealed class FilteredGameDataSource
             Items = [];
         }
 
-        var gamelist = GameUtil.GetVersionsWithinRange(sav, sav.Generation).ToList();
+        var gamelist = GameUtil.GetVersionsWithinRange(sav, sav.Context).ToList();
         Games = Source.VersionDataSource.Where(g => gamelist.Contains((GameVersion)g.Value) || g.Value == 0).ToList();
 
-        Languages = GameDataSource.LanguageDataSource(sav.Generation);
+        Languages = Source.LanguageDataSource(sav.Generation, sav.Context);
         Balls = Source.BallDataSource.Where(b => b.Value <= sav.MaxBallID).ToList();
         Abilities = Source.AbilityDataSource.Where(a => a.Value <= sav.MaxAbilityID).ToList();
 
         G4GroundTiles = Source.GroundTileDataSource;
+        ConsoleRegions = Source.Regions;
         Natures = Source.NatureDataSource;
     }
 
-    private static IEnumerable<ComboItem> GetFilteredSpecies(IGameValueLimit sav, GameDataSource source, bool HaX = false)
+    private static List<ComboItem> GetFilteredSpecies<TSave>(TSave sav, IReadOnlyList<ComboItem> source, bool HaX = false) where TSave : IGameValueLimit
     {
-        var all = source.SpeciesDataSource;
+        var result = new List<ComboItem>(source);
         if (HaX)
-            return FilterAbove(all, sav.MaxSpeciesID);
+        {
+            FilterAbove(result, sav.MaxSpeciesID);
+            return result;
+        }
 
         // Some games cannot acquire every Species that exists. Some can only acquire a subset.
-        return sav switch
+        _ = sav switch
         {
-            SAV7b gg => FilterUnavailable(all, gg.Personal),
-            SAV8LA la => FilterUnavailable(all, la.Personal),
-#if !DEBUG // Mainline games can be useful to show all for testing. Only filter out unavailable species in release builds.
-            SAV8SWSH swsh => FilterUnavailable(all, swsh.Personal),
-            SAV9SV sv => FilterUnavailable(all, sv.Personal),
-#endif
-            _ => FilterAbove(all, sav.MaxSpeciesID),
+            SAV7b gg => FilterUnavailable(result, gg.Personal),
+            SAV8LA la => FilterUnavailable(result, la.Personal),
+            // BD/SP can be handled by <= MaxSpeciesID as it as no gaps in species availability.
+            SAV8SWSH g8 => FilterUnavailable(result, g8.Personal),
+            SAV9SV g9 => FilterUnavailable(result, g9.Personal),
+            SAV9ZA za => FilterUnavailable(result, za.Personal),
+            _ => FilterAbove(result, sav.MaxSpeciesID),
         };
+        return result;
 
-        static IEnumerable<ComboItem> FilterAbove(IReadOnlyList<ComboItem> species, int limit)
-            => species.Where(s => s.Value <= limit);
+        static int FilterAbove(List<ComboItem> species, ushort limit)
+            => species.RemoveAll(s => s.Value > limit);
 
-        static IEnumerable<ComboItem> FilterUnavailable<T>(IReadOnlyList<ComboItem> source, T table) where T : IPersonalTable
-            => source.Where(s => table.IsSpeciesInGame((ushort)s.Value));
+        static int FilterUnavailable<T>(List<ComboItem> source, T table) where T : IPersonalTable
+            => source.RemoveAll(s => !table.IsSpeciesInGame((ushort)s.Value));
     }
 
-    private static IEnumerable<ComboItem> GetFilteredMoves(IGameValueLimit limit, GameDataSource source, bool HaX = false)
+    private static List<ComboItem> GetFilteredMoves<TSave>(TSave limit, EntityContext context, GameDataSource source, bool HaX = false) where TSave : IGameValueLimit
+    {
+        return GetFilteredMoves(context, source, HaX, limit.MaxMoveID);
+    }
+
+    // return a new list every time
+    private static List<ComboItem> GetFilteredMoves(EntityContext context, GameDataSource source, bool HaX, ushort max)
     {
         if (HaX)
-            return source.HaXMoveDataSource.Where(m => m.Value <= limit.MaxMoveID);
+            return source.HaXMoveDataSource.Where(m => m.Value <= max).ToList();
 
         var legal = source.LegalMoveDataSource;
-        return limit switch
+        if (context is EntityContext.Gen7b)
+            return legal.Where(s => MoveInfo7b.IsAllowedMoveGG((ushort)s.Value)).ToList();
+
+        var dummied = MoveInfo.GetDummiedMovesHashSet(context);
+        if (dummied.Length == 0 || context is EntityContext.Gen8) // Gen8 indicates dummied via Yellow Triangle
+            return legal.Where(m => m.Value <= max).ToList();
+
+        return GetMovesWithoutDummy(legal, max, dummied);
+    }
+
+    private static List<ComboItem> GetMovesWithoutDummy(IReadOnlyList<ComboItem> legal, ushort max, ReadOnlySpan<byte> dummied)
+    {
+        var result = new List<ComboItem>(legal.Count);
+        foreach (var item in legal)
         {
-            // LGPE: Not all moves are available
-            SAV7b or PB7 => legal.Where(s => MoveInfo7b.IsAllowedMoveGG((ushort)s.Value)),
-            _ => legal.Where(m => m.Value <= limit.MaxMoveID),
-        };
+            var value = item.Value;
+            if (value > max)
+                continue;
+            if (MoveInfo.IsDummiedMove(dummied, (ushort)value))
+                continue;
+            result.Add(item);
+        }
+        return result;
     }
 
     public readonly GameDataSource Source;
@@ -88,12 +118,10 @@ public sealed class FilteredGameDataSource
     public readonly IReadOnlyList<ComboItem> Abilities;
     public readonly IReadOnlyList<ComboItem> Natures;
     public readonly IReadOnlyList<ComboItem> G4GroundTiles;
-    public readonly IReadOnlyList<ComboItem> ConsoleRegions = GameDataSource.Regions;
+    public readonly IReadOnlyList<ComboItem> ConsoleRegions;
 
     private const char HiddenAbilitySuffix = 'H';
     private const char AbilityIndexSuffix = '1';
-
-    public IReadOnlyList<ComboItem> GetAbilityList(PKM pk) => GetAbilityList(pk.PersonalInfo);
 
     public IReadOnlyList<ComboItem> GetAbilityList(IPersonalAbility pi)
     {
@@ -107,10 +135,18 @@ public sealed class FilteredGameDataSource
         for (int i = 0; i < list.Length; i++)
         {
             var value = pi.GetAbilityAtIndex(i);
-            var name = names[value];
             char suffix = i == 2 ? HiddenAbilitySuffix : (char)(AbilityIndexSuffix + i);
-            var display = $"{name} ({suffix})";
-            list[i] = new ComboItem(display, value);
+            var item = GetAbilityItem(names, value, suffix);
+            list[i] = item;
         }
+    }
+
+    public static ComboItem GetAbilityItem(ReadOnlySpan<string> names, int value, char suffix)
+        => GetAbilityItem(names[value], suffix, value);
+
+    public static ComboItem GetAbilityItem(string name, char suffix, int value)
+    {
+        var display = $"{name} ({suffix})";
+        return new ComboItem(display, value);
     }
 }

@@ -4,7 +4,7 @@ using static PKHeX.Core.GameVersion;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Hatch Location validity for <see cref="GameVersion.Gen5"/>.
+/// Hatch Location validity for <see cref="EntityContext.Gen5"/>.
 /// </summary>
 public static class EggHatchLocation5
 {
@@ -16,9 +16,9 @@ public static class EggHatchLocation5
     /// <summary>
     /// Returns true if the location is valid for the specified Generation 5 game.
     /// </summary>
-    public static bool IsValidMet5(ushort location, GameVersion game)
+    public static bool IsValidMet5(ushort location, GameVersion version)
     {
-        var shift = (uint)(game - W);
+        var shift = (uint)(version - W);
         if (shift >= 4)
             return false;
 

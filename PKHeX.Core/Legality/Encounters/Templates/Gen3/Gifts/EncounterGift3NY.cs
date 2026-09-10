@@ -1,5 +1,6 @@
 using System;
 using static System.Buffers.Binary.BinaryPrimitives;
+using static PKHeX.Core.RandomCorrelationRating;
 
 namespace PKHeX.Core;
 
@@ -7,7 +8,7 @@ namespace PKHeX.Core;
 /// Generation 3 Event Gift
 /// </summary>
 /// <remarks>Specialized for the PCNY gift distribution machines.</remarks>
-public sealed class EncounterGift3NY(ushort Species, Distribution3NY Distribution, byte Level, Moveset Moves)
+public sealed record EncounterGift3NY(ushort Species, Distribution3NY Distribution, byte Level, Moveset Moves)
     : IEncounterable, IEncounterMatch, IRandomCorrelationEvent3, IFixedTrainer, IMoveset
 {
     public ushort Species { get; } = Species;
@@ -24,7 +25,7 @@ public sealed class EncounterGift3NY(ushort Species, Distribution3NY Distributio
     public byte LevelMin => Level;
     public byte LevelMax => Level;
     public ushort Location => 255;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public AbilityPermission Ability => AbilityPermission.Any12;
     public Ball FixedBall => Ball.Poke;
     public Shiny Shiny => Shiny.Never;
@@ -38,7 +39,7 @@ public sealed class EncounterGift3NY(ushort Species, Distribution3NY Distributio
     public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => true; // checked in explicit match
 
     #region Generating
-    PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
+    PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr);
     PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria) => ConvertToPKM(tr, criteria);
 
     public PK3 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
@@ -70,22 +71,26 @@ public sealed class EncounterGift3NY(ushort Species, Distribution3NY Distributio
         return pk;
     }
 
-    private static void SetPINGA(PK3 pk, EncounterCriteria criteria, PersonalInfo3 pi)
+    private static void SetPINGA(PK3 pk, in EncounterCriteria criteria, PersonalInfo3 pi)
     {
         uint seed = Util.Rand32();
+        var filterIVs = criteria.IsSpecifiedIVs(2);
         var gr = pi.Gender;
         var idXor = pk.TID16; // no SID
         while (true)
         {
             var pid = CommonEvent3.GetAntishiny(ref seed, idXor);
-            if (criteria.IsSpecifiedNature() && criteria.Nature != (Nature)(pid % 25))
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
                 continue; // try again
-            var gender = EntityGender.GetFromPIDAndRatio(pid, gr);
-            if (!criteria.IsGenderSatisfied(gender))
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(EntityGender.GetFromPIDAndRatio(pid, gr)))
                 continue;
-
+            var iv32 = ClassicEraRNG.GetSequentialIVs(ref seed);
+            if (criteria.IsSpecifiedHiddenPower() && !criteria.IsSatisfiedHiddenPower(iv32))
+                continue;
+            if (filterIVs && !criteria.IsSatisfiedIVs(iv32))
+                continue;
             pk.PID = pid;
-            pk.IV32 = PIDGenerator.SetIVsFromSeedSequentialLCRNG(ref seed);
+            pk.IV32 = iv32;
             pk.RefreshAbility((int)(pid & 1));
             return;
         }
@@ -158,15 +163,15 @@ public sealed class EncounterGift3NY(ushort Species, Distribution3NY Distributio
         return result;
     }
 
-    public bool IsCompatible(PIDType type, PKM pk) => type is Method;
+    public RandomCorrelationRating IsCompatible(PIDType type, PKM pk) => type is Method ? Match : Mismatch;
 
-    public bool IsCompatibleReviseReset(ref PIDIV value, PKM pk)
+    public RandomCorrelationRating IsCompatibleReviseReset(ref PIDIV value, PKM pk)
     {
         var prev = value.Mutated; // if previously revised, use that instead.
         var type = prev is 0 ? value.Type : prev;
         if (type is not PIDType.BACD_AX)
-            return false;
+            return Mismatch;
 
-        return true; // Table weight -> gift selection is a separate RNG, nothing to check!
+        return Match; // Table weight -> gift selection is a separate RNG, nothing to check!
     }
 }

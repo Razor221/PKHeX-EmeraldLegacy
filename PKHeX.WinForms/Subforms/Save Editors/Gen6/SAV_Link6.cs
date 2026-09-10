@@ -52,7 +52,7 @@ public partial class SAV_Link6 : Form
         { WinFormsUtil.Alert("Invalid file length"); return; }
 
         byte[] data = File.ReadAllBytes(ofd.FileName);
-        data.AsSpan().CopyTo(Gifts.Data);
+        data.CopyTo(Gifts.Data);
 
         LoadLinkData();
     }
@@ -64,7 +64,7 @@ public partial class SAV_Link6 : Form
         if (sfd.ShowDialog() != DialogResult.OK)
             return;
 
-        File.WriteAllBytes(sfd.FileName, Gifts.Data.ToArray());
+        File.WriteAllBytes(sfd.FileName, Gifts.Data);
         WinFormsUtil.Alert("Pokémon Link data saved to:" + Environment.NewLine + sfd.FileName);
     }
 

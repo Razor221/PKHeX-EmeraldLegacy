@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using FluentAssertions;
 using Xunit;
 using static PKHeX.Core.Move;
@@ -12,11 +13,8 @@ public class BreedTests
 {
     private const int MovesetCount = 4; // Four moves; zeroed empty slots.
 
-    private static void GetMoves(Span<Move> moves, Span<ushort> result)
-    {
-        for (int i = 0; i < moves.Length; i++)
-            result[i] = (ushort) moves[i];
-    }
+    private static void GetMoves(ReadOnlySpan<Move> moves, Span<ushort> result)
+        => MemoryMarshal.Cast<Move, ushort>(moves).CopyTo(result);
 
     [Theory]
     [InlineData(GD, Bulbasaur, 0, Tackle, Growl)]
@@ -36,29 +34,27 @@ public class BreedTests
     [InlineData(BD, Gible, 0, BodySlam, Outrage, SandTomb, DragonBreath)]
     public void VerifyBreed(GameVersion game, Species species, byte form, params Move[] movelist)
     {
-        var gen = game.GetGeneration();
+        var gen = game.Generation;
         Span<ushort> moves = stackalloc ushort[MovesetCount];
         GetMoves(movelist, moves);
         var origins = new byte[moves.Length];
         var valid = MoveBreed.Validate(gen, (ushort) species, form, game, moves, origins);
         valid.Should().BeTrue();
 
-        var x = origins;
-
         if (gen != 2)
-            x.SequenceEqual(x.Order()).Should().BeTrue();
+            origins.SequenceEqual(origins.Order()).Should().BeTrue();
         else
-            x.SequenceEqual(x.OrderBy(z => z != (byte)EggSource2.Base)).Should().BeTrue();
+            origins.SequenceEqual(origins.OrderBy(z => z != (byte)EggSource2.Base)).Should().BeTrue();
     }
 
     [Theory]
     [InlineData(C, Igglybuff, 0, Charm, DefenseCurl, Sing, Flamethrower)] // invalid push-out order
     [InlineData(SH, Honedge, 0, FuryCutter, WideGuard, DestinyBond)] // insufficient move count
     [InlineData(OR, Rotom, 0, Discharge, Charge, Trick, ConfuseRay)] // invalid push-out order
-    [InlineData(OR, Rotom, 0, ThunderWave, ThunderShock, ConfuseRay, Discharge)] // no inheriting levelup
+    [InlineData(OR, Rotom, 0, ThunderWave, ThunderShock, ConfuseRay, Discharge)] // no inheriting level-up moves
     public void CheckBad(GameVersion game, Species species, byte form, params Move[] movelist)
     {
-        var gen = game.GetGeneration();
+        var gen = game.Generation;
         Span<ushort> moves = stackalloc ushort[MovesetCount];
         GetMoves(movelist, moves);
         Span<byte> result = stackalloc byte[moves.Length];
@@ -72,7 +68,7 @@ public class BreedTests
     [InlineData(BD, Gible, 0, BodySlam, SandTomb, Outrage, DragonBreath)]
     public void CheckFix(GameVersion game, Species species, byte form, params Move[] movelist)
     {
-        var gen = game.GetGeneration();
+        var gen = game.Generation;
         Span<ushort> moves = stackalloc ushort[MovesetCount];
         GetMoves(movelist, moves);
 

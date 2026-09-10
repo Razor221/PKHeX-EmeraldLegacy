@@ -6,25 +6,19 @@ using static System.Buffers.Binary.BinaryPrimitives;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Generation 8 <see cref="SaveFile"/> object for <see cref="GameVersion.BDSP"/> games.
+/// Generation 8 <see cref="SaveFile"/> object for <see cref="EntityContext.Gen8b"/> games.
 /// </summary>
 public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IEventWorkArray<int>, IBoxDetailName, IBoxDetailWallpaper, IDaycareStorage, IDaycareEggState, IDaycareRandomState<ulong>
 {
     // Save Data Attributes
     protected internal override string ShortSummary => $"{OT} ({Version}) - {System.LastSavedTime}";
     public override string Extension => string.Empty;
-
-    public override IReadOnlyList<string> PKMExtensions => Array.FindAll(PKM.Extensions, f =>
-    {
-        int gen = f[^1] - 0x30;
-        return gen <= 8;
-    });
+    public override IReadOnlyList<string> PKMExtensions => EntityFileExtension.GetExtensionsHOME();
 
     public SAV8BS() : this(new byte[SaveUtil.SIZE_G8BDSP_3], false) => SaveRevision = (int)Gem8Version.V1_3;
 
-    public SAV8BS(byte[] data, bool exportable = true) : base(data, exportable)
+    public SAV8BS(Memory<byte> Raw, bool exportable = true) : base(Raw, exportable)
     {
-        var Raw = Data.AsMemory();
         FlagWork = new FlagWork8b(this, Raw.Slice(0x00004, FlagWork8b.SIZE));
         Items = new MyItem8b(this, Raw.Slice(0x0563C, MyItem8b.SIZE));
         Underground = new UndergroundItemList8b(this, Raw.Slice(0x111BC, UndergroundItemList8b.SIZE));
@@ -75,7 +69,7 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
         // v1.1 additions
         RecordAdd = new RecordAddData8b(this, GetSafe(Raw, 0xE9828, 0x3C0));
         MysteryRecords = new MysteryBlock8b(this, GetSafe(Raw, 0xE9BE8, MysteryBlock8b.MinSize)); // size: ???
-        // POKETCH_POKETORE_COUNT_ARRAY -- (u16 species, u16 unused, i32 count, i32 reserved, i32 reserved)[3] = 0x10bytes
+        // POKETCH_POKETORE_COUNT_ARRAY -- (u16 species, u16 unused, i32 count, i32 reserved, i32 reserved)[3] = 0x10 bytes
         // PLAYREPORT_DATA -- reporting player progress online? 248 bytes?
         // MT_DATA mtData; -- 0x400 bytes
         // DENDOU_SAVE_ADD -- language tracking of members (hall of fame?); ADD_POKE_MEMBER[30], ADD_POKE[6]
@@ -107,8 +101,8 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
     }
 
     // Configuration
-    protected override int SIZE_STORED => PokeCrypto.SIZE_8STORED;
-    protected override int SIZE_PARTY => PokeCrypto.SIZE_8PARTY;
+    public override int SIZE_STORED => PokeCrypto.SIZE_8STORED;
+    public override int SIZE_PARTY => PokeCrypto.SIZE_8PARTY;
     public override int SIZE_BOXSLOT => PokeCrypto.SIZE_8PARTY;
     public override PB8 BlankPKM => new();
     public override Type PKMType => typeof(PB8);
@@ -133,16 +127,16 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
 
     public int SaveRevision
     {
-        get => ReadInt32LittleEndian(Data.AsSpan(0));
-        init => WriteInt32LittleEndian(Data.AsSpan(0), value);
+        get => ReadInt32LittleEndian(Data);
+        init => WriteInt32LittleEndian(Data, value);
     }
 
     public string SaveRevisionString => ((Gem8Version)SaveRevision).GetSuffixString();
 
     public override ReadOnlySpan<ushort> HeldItems => Legal.HeldItems_BS;
-    protected override SAV8BS CloneInternal() => new((byte[])(Data.Clone()));
+    protected override SAV8BS CloneInternal() => new(Data.ToArray());
 
-    protected override byte[] GetFinalData()
+    protected override Memory<byte> GetFinalData()
     {
         BoxLayout.SaveBattleTeams();
         return base.GetFinalData();
@@ -158,7 +152,7 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
 
     public override StorageSlotSource GetBoxSlotFlags(int index)
     {
-        int team = Array.IndexOf(TeamSlots, index);
+        int team = TeamSlots.IndexOf(index);
         if (team < 0)
             return StorageSlotSource.None;
 
@@ -172,8 +166,8 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
     #region Checksums
 
     private const int HashLength = MD5.HashSizeInBytes;
-    private const int HashOffset = SaveUtil.SIZE_G8BDSP - HashLength;
-    private Span<byte> CurrentHash => Data.AsSpan(HashOffset, HashLength);
+    private const int HashOffset = SaveUtil.SIZE_G8BDSP_0 - HashLength;
+    private Span<byte> CurrentHash => Data.Slice(HashOffset, HashLength);
 
     // Checksum is stored in the middle of the save file, and is zeroed before computing.
     protected override void SetChecksums()
@@ -203,8 +197,8 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
 
     #endregion
 
-    protected override PB8 GetPKM(byte[] data) => new(data);
-    protected override byte[] DecryptPKM(byte[] data) => PokeCrypto.DecryptArray8(data);
+    protected override PB8 GetPKM(Memory<byte> data) => new(data);
+    protected override void DecryptPKM(Span<byte> data) => PokeCrypto.Decrypt8(data);
 
     #region Blocks
     // public Box8 BoxInfo { get; }
@@ -261,7 +255,7 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
     public override uint ID32 { get => MyStatus.ID32; set => MyStatus.ID32 = value; }
     public override ushort TID16 { get => MyStatus.TID16; set => MyStatus.TID16 = value; }
     public override ushort SID16 { get => MyStatus.SID16; set => MyStatus.SID16 = value; }
-    public override GameVersion Version { get => MyStatus.Game; set => MyStatus.Game = value; }
+    public override GameVersion Version { get => MyStatus.Version; set => MyStatus.Version = value; }
     public override byte Gender { get => MyStatus.Male ? (byte)0 : (byte)1; set => MyStatus.Male = value == 0; }
     public override int Language { get => Config.Language; set => Config.Language = value; }
     public override string OT { get => MyStatus.OT; set => MyStatus.OT = value; }
@@ -272,7 +266,7 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
     public override int PlayedSeconds { get => Played.PlayedSeconds; set => Played.PlayedSeconds = value; }
 
     // Inventory
-    public override IReadOnlyList<InventoryPouch> Inventory { get => Items.Inventory; set => Items.Inventory = value; }
+    public override PlayerBag8b Inventory => new(this);
 
     // Storage
     public override int GetPartyOffset(int slot) => Party + (SIZE_PARTY * slot);
@@ -282,32 +276,33 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
     public void SetBoxWallpaper(int box, int value) => BoxLayout.SetBoxWallpaper(box, value);
     public string GetBoxName(int box) => BoxLayout[box];
     public void SetBoxName(int box, ReadOnlySpan<char> value) => BoxLayout.SetBoxName(box, value);
-    public override byte[] GetDataForBox(PKM pk) => pk.EncryptedPartyData;
     public override int CurrentBox { get => BoxLayout.CurrentBox; set => BoxLayout.CurrentBox = (byte)value; }
     public override int BoxesUnlocked { get => BoxLayout.BoxesUnlocked; set => BoxLayout.BoxesUnlocked = (byte)value; }
 
-    public string Rival
+    public Span<byte> RivalNameTrash => Data.Slice(0x55F4, 0x1A);
+
+    public string RivalName
     {
-        get => GetString(Data.AsSpan(0x55F4, 0x1A));
-        set => SetString(Data.AsSpan(0x55F4, 0x1A), value, MaxStringLengthTrainer, StringConverterOption.ClearZero);
+        get => GetString(RivalNameTrash);
+        set => SetString(RivalNameTrash, value, MaxStringLengthTrainer, StringConverterOption.ClearZero);
     }
 
     public short ZoneID // map
     {
-        get => ReadInt16LittleEndian(Data.AsSpan(0x5634));
-        set => WriteInt16LittleEndian(Data.AsSpan(0x5634), value);
+        get => ReadInt16LittleEndian(Data[0x5634..]);
+        set => WriteInt16LittleEndian(Data[0x5634..], value);
     }
 
     public float TimeScale // default 1440.0f
     {
-        get => ReadSingleLittleEndian(Data.AsSpan(0x5638));
-        set => WriteSingleLittleEndian(Data.AsSpan(0x5638), value);
+        get => ReadSingleLittleEndian(Data[0x5638..]);
+        set => WriteSingleLittleEndian(Data[0x5638..], value);
     }
 
     public uint UnionRoomPenaltyTime // move this into the UnionSaveData block once reversed.
     {
-        get => ReadUInt32LittleEndian(Data.AsSpan(0xCEA14));
-        set => WriteSingleLittleEndian(Data.AsSpan(0xCEA14), value);
+        get => ReadUInt32LittleEndian(Data[0xCEA14..]);
+        set => WriteSingleLittleEndian(Data[0xCEA14..], value);
     }
 
     protected override void SetPKM(PKM pk, bool isParty = false)
@@ -317,9 +312,9 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
         pb8.UpdateHandler(this);
 
         pb8.RefreshChecksum();
-        if (SetUpdateRecords != PKMImportSetting.Skip)
-            AddCountAcquired(pk);
     }
+
+    protected override void SetRecord(PKM pk) => AddCountAcquired(pk);
 
     private void AddCountAcquired(PKM pk)
     {
@@ -337,8 +332,14 @@ public sealed class SAV8BS : SaveFile, ISaveFileRevision, ITrainerStatRecord, IE
         protected set => PartyInfo.PartyCount = value;
     }
 
-    public override PB8 GetDecryptedPKM(byte[] data) => GetPKM(DecryptPKM(data));
-    public override PB8 GetBoxSlot(int offset) => GetDecryptedPKM(Data.AsSpan(offset, SIZE_PARTY).ToArray()); // party format in boxes!
+    public override PB8 GetDecryptedPKM(Memory<byte> data)
+    {
+        DecryptPKM(data.Span);
+        return GetPKM(data);
+    }
+
+    protected override PB8 GetBoxSlot(int offset) => GetDecryptedPKM(Data.Slice(offset, SIZE_PARTY).ToArray()); // party format in boxes!
+    protected override void WriteSlotBox(PKM pk, Span<byte> data) => pk.WriteEncryptedDataParty(data);
 
     public enum TopMenuItemType
     {

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -8,21 +7,27 @@ namespace PKHeX.Core;
 /// Generation 3 <see cref="SaveFile"/> object for <see cref="GameVersion.E"/>.
 /// </summary>
 /// <inheritdoc cref="SAV3" />
-public sealed class SAV3E : SAV3, IGen3Hoenn, IGen3Joyful, IGen3Wonder, IDaycareRandomState<uint>
+public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
 {
     // Configuration
-    protected override SAV3E CloneInternal() => new(GetFinalData()[..]) { Language = Language };
+    protected override SAV3E CloneInternal() => new(GetFinalData()) { Language = Language };
+    public override SaveBlock3SmallE SmallBlock { get; }
+    public override SaveBlock3LargeE LargeBlock { get; }
     public override GameVersion Version { get => GameVersion.E; set { } }
     public override PersonalTable3 Personal => PersonalTable.E;
 
-    public override int EventFlagCount => 8 * 300;
-    public override int EventWorkCount => 0x100;
-    protected override int DaycareSlotSize => SIZE_STORED + 0x3C; // 0x38 mail + 4 exp
-    protected override int EggEventFlag => 0x86;
-    protected override int BadgeFlagStart => 0x867;
+    public SAV3E(Memory<byte> data) : base(data)
+    {
+        SmallBlock = new SaveBlock3SmallE(SmallBuffer[..0xF2C]);
+        LargeBlock = new SaveBlock3LargeE(LargeBuffer[..0x3D88]);
+    }
+    public SAV3E(bool japanese = false) : base(japanese)
+    {
+        SmallBlock = new SaveBlock3SmallE(SmallBuffer[..0xF2C]);
+        LargeBlock = new SaveBlock3LargeE(LargeBuffer[..0x3D88]);
+    }
 
-    public SAV3E(byte[] data) : base(data) => Initialize();
-    public SAV3E(bool japanese = false) : base(japanese) => Initialize();
+    public override PlayerBag3E Inventory => new(this);
 
     protected override int EventFlag => 0x13D8;
     protected override int EventWork => 0x1504;
@@ -37,88 +42,30 @@ public sealed class SAV3E : SAV3, IGen3Hoenn, IGen3Joyful, IGen3Wonder, IDaycare
     #region Small
     public override bool NationalDex
     {
-        get => PokedexNationalMagicRSE == PokedexNationalUnlockRSE;
+        get => SmallBlock.PokedexNationalMagicRSE == PokedexNationalUnlockRSE;
         set
         {
-            PokedexMode = value ? (byte)1 : (byte)0; // mode
-            PokedexNationalMagicRSE = value ? PokedexNationalUnlockRSE : (byte)0; // magic
+            SmallBlock.PokedexMode = value ? (byte)1 : (byte)0; // mode
+            SmallBlock.PokedexNationalMagicRSE = value ? PokedexNationalUnlockRSE : (byte)0; // magic
             SetEventFlag(0x896, value);
             SetWork(0x46, PokedexNationalUnlockWorkRSE);
         }
     }
 
-    public override uint SecurityKey
-    {
-        get => ReadUInt32LittleEndian(Small.AsSpan(0xAC));
-        set => WriteUInt32LittleEndian(Small.AsSpan(0xAC), value);
-    }
-
-    public RTC3 ClockInitial
-    {
-        get => new(Small.AsSpan(0x98, RTC3.Size).ToArray());
-        set => SetData(Small.AsSpan(0x98), value.Data);
-    }
-
-    public RTC3 ClockElapsed
-    {
-        get => new(Small.AsSpan(0xA0, RTC3.Size).ToArray());
-        set => SetData(Small.AsSpan(0xA0), value.Data);
-    }
-
-    public uint BerryPowder
-    {
-        get => ReadUInt32LittleEndian(Small.AsSpan(0x1F4)) ^ SecurityKey;
-        set => WriteUInt32LittleEndian(Small.AsSpan(0x1F4), value ^ SecurityKey);
-    }
-
-    public ushort JoyfulJumpInRow           { get => ReadUInt16LittleEndian(Small.AsSpan(0x1FC)); set => WriteUInt16LittleEndian(Small.AsSpan(0x1FC), Math.Min((ushort)9999, value)); }
-    // u16 field2;
-    public ushort JoyfulJump5InRow          { get => ReadUInt16LittleEndian(Small.AsSpan(0x200)); set => WriteUInt16LittleEndian(Small.AsSpan(0x200), Math.Min((ushort)9999, value)); }
-    public ushort JoyfulJumpGamesMaxPlayers { get => ReadUInt16LittleEndian(Small.AsSpan(0x202)); set => WriteUInt16LittleEndian(Small.AsSpan(0x202), Math.Min((ushort)9999, value)); }
-    // u32 field8;
-    public uint   JoyfulJumpScore           { get => ReadUInt16LittleEndian(Small.AsSpan(0x208)); set => WriteUInt32LittleEndian(Small.AsSpan(0x208), Math.Min(99990, value)); }
-
-    public uint   JoyfulBerriesScore        { get => ReadUInt16LittleEndian(Small.AsSpan(0x20C)); set => WriteUInt32LittleEndian(Small.AsSpan(0x20C), Math.Min(99990, value)); }
-    public ushort JoyfulBerriesInRow        { get => ReadUInt16LittleEndian(Small.AsSpan(0x210)); set => WriteUInt16LittleEndian(Small.AsSpan(0x210), Math.Min((ushort)9999, value)); }
-    public ushort JoyfulBerries5InRow       { get => ReadUInt16LittleEndian(Small.AsSpan(0x212)); set => WriteUInt16LittleEndian(Small.AsSpan(0x212), Math.Min((ushort)9999, value)); }
-
-    public uint BP
-    {
-        get => ReadUInt16LittleEndian(Small.AsSpan(0xEB8));
-        set
-        {
-            if (value > 9999)
-                value = 9999;
-            WriteUInt16LittleEndian(Small.AsSpan(0xEB8), (ushort)value);
-        }
-    }
-
-    public uint BPEarned
-    {
-        get => ReadUInt16LittleEndian(Small.AsSpan(0xEBA));
-        set
-        {
-            if (value > 65535)
-                value = 65535;
-            WriteUInt16LittleEndian(Small.AsSpan(0xEBA), (ushort)value);
-        }
-    }
     #endregion
 
     #region Large
-    public override int PartyCount { get => Large[0x234]; protected set => Large[0x234] = (byte)value; }
-    public override int GetPartyOffset(int slot) => 0x238 + (SIZE_PARTY * slot);
 
     public override uint Money
     {
-        get => ReadUInt32LittleEndian(Large.AsSpan(0x0490)) ^ SecurityKey;
-        set => WriteUInt32LittleEndian(Large.AsSpan(0x0490), value ^ SecurityKey);
+        get => LargeBlock.Money ^ SmallBlock.SecurityKey;
+        set => LargeBlock.Money = value ^ SmallBlock.SecurityKey;
     }
 
     public override uint Coin
     {
-        get => (ushort)(ReadUInt16LittleEndian(Large.AsSpan(0x0494)) ^ SecurityKey);
-        set => WriteUInt16LittleEndian(Large.AsSpan(0x0494), (ushort)(value ^ SecurityKey));
+        get => (ushort)(LargeBlock.Coin ^ SmallBlock.SecurityKey);
+        set => LargeBlock.Coin = (ushort)(value ^ SmallBlock.SecurityKey);
     }
 
     private const int OFS_PCItem = 0x0498;
@@ -187,8 +134,8 @@ public sealed class SAV3E : SAV3, IGen3Hoenn, IGen3Joyful, IGen3Wonder, IDaycare
     protected override int GetDaycareEXPOffset(int slot) => GetDaycareSlotOffset(slot + 1) - 4; // @ end of each pk slot
     uint IDaycareRandomState<uint>.Seed // after the 2 slots, before the step counter
     {
-        get => ReadUInt32LittleEndian(Large.AsSpan(GetDaycareEXPOffset(2)));
-        set => WriteUInt32LittleEndian(Large.AsSpan(GetDaycareEXPOffset(2)), value);
+        get => LargeBlock.DaycareSeed;
+        set => LargeBlock.DaycareSeed = value;
     }
 
     protected override int ExternalEventData => 0x331B;
@@ -298,7 +245,8 @@ public sealed class SAV3E : SAV3, IGen3Hoenn, IGen3Joyful, IGen3Wonder, IDaycare
     #endregion
 
     private const uint EXTRADATA_SENTINEL = 0x0000B39D;
-    public bool HasBattleVideo => Data.Length > SaveUtil.SIZE_G3RAWHALF && ReadUInt32LittleEndian(GetFinalExternalData().Span) == EXTRADATA_SENTINEL;
+    public bool HasBattleVideo => IsFullSaveFile && ReadUInt32LittleEndian(GetFinalExternalData().Span) == EXTRADATA_SENTINEL;
+
     public void SetExtraDataSentinelBattleVideo() => WriteUInt32LittleEndian(GetFinalExternalData().Span, EXTRADATA_SENTINEL);
 
     public Memory<byte> BattleVideoData => GetFinalExternalData().Slice(4, BattleVideo3.SIZE);

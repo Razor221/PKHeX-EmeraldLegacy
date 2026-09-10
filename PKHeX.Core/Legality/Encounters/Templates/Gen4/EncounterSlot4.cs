@@ -1,9 +1,10 @@
 using static PKHeX.Core.SlotType4;
+using static PKHeX.Core.RandomCorrelationRating;
 
 namespace PKHeX.Core;
 
 /// <summary>
-/// Encounter Slot found in <see cref="GameVersion.Gen4"/>.
+/// Encounter Slot found in <see cref="EntityContext.Gen4"/>.
 /// </summary>
 public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte Form, byte LevelMin, byte LevelMax, byte SlotNumber, byte MagnetPullIndex, byte MagnetPullCount, byte StaticIndex, byte StaticCount)
     : IEncounterable, IEncounterMatch, IEncounterConvertible<PK4>, IEncounterSlot4, IGroundTypeTile, IEncounterFormRandom, IRandomCorrelation
@@ -16,7 +17,7 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
     public Ball FixedBall => GetRequiredBallValue();
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsRandomUnspecificForm => Form >= EncounterUtil.FormDynamic;
 
     public string Name => $"Wild Encounter ({Version})";
@@ -45,7 +46,7 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
 
     public PK4 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var pi = PersonalTable.HGSS[Species];
         var pk = new PK4
         {
@@ -61,11 +62,11 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
             MetDate = EncounterDate.GetDateNDS(),
             Ball = (byte)GetRequiredBallValue(Ball.Poke),
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
 
         SetPINGA(pk, criteria, pi);
@@ -82,28 +83,25 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
         return form;
     }
 
-    private void SetPINGA(PK4 pk, EncounterCriteria criteria, PersonalInfo4 pi)
+    private void SetPINGA(PK4 pk, in EncounterCriteria criteria, PersonalInfo4 pi)
     {
         bool hgss = pk.HGSS;
-        uint seed;
         if (hgss)
         {
-            if (!criteria.IsSpecifiedIVs() || !this.SetFromIVsK(pk, pi, criteria, out seed))
-                seed = this.SetRandomK(pk, pi, criteria, Util.Rand32());
+            if (!criteria.IsSpecifiedIVsAll() || !this.SetFromIVsK(pk, pi, criteria, out _))
+                this.SetRandomK(pk, pi, criteria, Util.Rand32());
         }
         else
         {
-            if (!criteria.IsSpecifiedIVs() || !this.SetFromIVsJ(pk, pi, criteria, out seed))
-                seed = this.SetRandomJ(pk, pi, criteria, Util.Rand32());
+            if (!criteria.IsSpecifiedIVsAll() || !this.SetFromIVsJ(pk, pi, criteria, out _))
+                this.SetRandomJ(pk, pi, criteria, Util.Rand32());
         }
-        if (Species == (int)Core.Species.Unown)
-            pk.Form = GetUnownForm(seed, hgss);
     }
 
     /// <summary>
     /// Gets a legal Unown form based on the game version and seed that generated the Method 1 spread.
     /// </summary>
-    private static byte GetUnownForm(uint seed, bool hgss)
+    public static byte GetLegalUnownForm(uint seed, bool hgss)
     {
         // ABCD|E(Item)|F(Form) determination
         if (!hgss)
@@ -131,7 +129,7 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
             // Must match level exactly.
             if (!this.IsLevelWithinRange(pk.MetLevel))
             {
-                if ((Type is not Grass || pk.MetLevel != PressureLevel) || ParseSettings.Settings.FramePattern.RNGFrameNotFound4 != Severity.Invalid)
+                if (Type is not Grass || pk.MetLevel != PressureLevel || ParseSettings.Settings.FramePattern.RNGFrameNotFound4 != Severity.Invalid)
                     return false; // Only allow Pressure Slots through if they'll be checked by the later Lead verification.
             }
         }
@@ -168,7 +166,7 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
         }
         if (IsDeferredWurmple(pk))
             return EncounterMatchRating.PartialMatch;
-        if (pk.Species == (int)Core.Species.Unown && !EncounterArea4.IsUnownFormValid(pk, pk.Form))
+        if (Species == (int)Core.Species.Unown && !EncounterArea4.IsUnownFormValid(pk, pk.Form, Location is RuinsOfAlph4.Location))
             return EncounterMatchRating.PartialMatch;
         return EncounterMatchRating.Match;
     }
@@ -176,22 +174,25 @@ public sealed record EncounterSlot4(EncounterArea4 Parent, ushort Species, byte 
     private bool IsDeferredWurmple(PKM pk) => Species == (int)Core.Species.Wurmple && pk.Species != (int)Core.Species.Wurmple && !WurmpleUtil.IsWurmpleEvoValid(pk);
     #endregion
 
-    public bool IsCompatible(PIDType type, PKM pk)
+    public RandomCorrelationRating IsCompatible(PIDType type, PKM pk)
     {
         if (type is PIDType.Method_1)
-            return true;
+            return Match;
         // Chain shiny with Poké Radar is only possible in D/P/Pt, in grass.
         // Safari Zone does not allow using the Poké Radar
         if (type is PIDType.ChainShiny)
-            return pk.IsShiny && CanUseRadar;
+            return pk.IsShiny && CanUseRadar ? Match : Mismatch;
         if (type is PIDType.CuteCharm)
-            return MethodFinder.IsCuteCharm4Valid(this, pk);
-        return false;
+            return CuteCharm4.IsValid(this, pk) ? Match : Mismatch;
+        return Mismatch;
     }
 
     public PIDType GetSuggestedCorrelation() => PIDType.Method_1;
 
     public byte PressureLevel => Type != Grass ? LevelMax : Parent.GetPressureMax(Species, LevelMax);
+
+    // HG/SS has some encounter generation routines that sample rejects until a minimum of one 31 IV is present, up to 4x.
     public bool IsBugContest => Type == BugContest;
     public bool IsSafariHGSS => Locations4.IsSafari(Location);
+    public bool IsRerollMinimum31 => IsBugContest || IsSafariHGSS;
 }

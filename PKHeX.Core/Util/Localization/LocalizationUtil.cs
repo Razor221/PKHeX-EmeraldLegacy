@@ -42,16 +42,13 @@ public static class LocalizationUtil
         return result;
     }
 
-    /// <summary>
-    /// Gets the current localization in a static class containing language-specific strings
-    /// </summary>
-    /// <param name="t"></param>
+    /// <inheritdoc cref="GetLocalization(Type, ReadOnlySpan{string})"/>
     public static string[] GetLocalization(Type t) => DumpStrings(t);
 
     /// <summary>
     /// Gets the current localization in a static class containing language-specific strings
     /// </summary>
-    /// <param name="t"></param>
+    /// <param name="t">Type of the static class containing the desired strings.</param>
     /// <param name="existingLines">Existing localization lines (if provided)</param>
     public static string[] GetLocalization(Type t, ReadOnlySpan<string> existingLines)
     {
@@ -62,7 +59,7 @@ public static class LocalizationUtil
         var result = new string[currentLines.Length];
         for (int i = 0; i < current.Length; i++)
         {
-            int index = Array.IndexOf(existing, current[i]);
+            int index = existing.IndexOf(current[i]);
             result[i] = index < 0 ? currentLines[i] : existingLines[index];
         }
         return result;

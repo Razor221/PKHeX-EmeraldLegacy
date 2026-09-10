@@ -7,7 +7,8 @@ namespace PKHeX.Core;
 /// Generation 8 Static Encounter
 /// </summary>
 public sealed record EncounterStatic8b(GameVersion Version)
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PB8>, IFlawlessIVCount, IFatefulEncounterReadOnly, IStaticCorrelation8b
+    : IEncounterable, IEncounterMatch, IEncounterConvertible<PB8>,
+        IFlawlessIVCount, IFatefulEncounterReadOnly, IStaticCorrelation8b, IGenerateSeed32
 {
     public byte Generation => 8;
     public EntityContext Context => EntityContext.Gen8b;
@@ -26,7 +27,7 @@ public sealed record EncounterStatic8b(GameVersion Version)
     public required byte Level { get; init; }
     public Ball FixedBall { get; init; }
     public byte FlawlessIVCount { get; init; }
-    public bool Roaming { get; init; }
+    public bool IsRoaming { get; init; }
     public AbilityPermission Ability { get; init; }
     public Shiny Shiny { get; init; }
     public bool FatefulEncounter { get; init; }
@@ -34,7 +35,7 @@ public sealed record EncounterStatic8b(GameVersion Version)
     public string Name => "Static Encounter";
     public string LongName => Name;
 
-    public StaticCorrelation8bRequirement GetRequirement(PKM pk) => Roaming
+    public StaticCorrelation8bRequirement GetRequirement(PKM pk) => IsRoaming
         ? MustHave
         : MustNotHave;
 
@@ -60,8 +61,8 @@ public sealed record EncounterStatic8b(GameVersion Version)
 
     public PB8 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.BDSP[Species, Form];
         var pk = new PB8
         {
@@ -76,12 +77,12 @@ public sealed record EncounterStatic8b(GameVersion Version)
 
             ID32 = tr.ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = tr.Gender,
             OriginalTrainerName = tr.OT,
             OriginalTrainerFriendship = pi.BaseFriendship,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
 
         if (IsEgg)
@@ -101,7 +102,7 @@ public sealed record EncounterStatic8b(GameVersion Version)
         return pk;
     }
 
-    private void SetPINGA(PB8 pk, EncounterCriteria criteria)
+    private void SetPINGA(PB8 pk, in EncounterCriteria criteria)
     {
         var req = GetRequirement(pk);
         if (req == MustHave) // Roamers
@@ -114,6 +115,19 @@ public sealed record EncounterStatic8b(GameVersion Version)
             var shiny = Shiny == Shiny.Never ? Shiny.Never : Shiny.Random;
             Wild8bRNG.ApplyDetails(pk, criteria, shiny, FlawlessIVCount, Ability);
         }
+    }
+
+    public bool GenerateSeed32(PKM pk, uint seed)
+    {
+        if (!IsRoaming)
+            return false;
+        if (pk is not PB8 pb8)
+            throw new ArgumentException($"{nameof(pk)} must be a {nameof(PB8)} instance.", nameof(pk));
+
+        var criteria = EncounterCriteria.Unrestricted;
+        var shiny = Shiny == Shiny.Random ? Shiny.FixedValue : Shiny;
+        Roaming8bRNG.TryApplyFromSeed(pb8, criteria, shiny, FlawlessIVCount, seed);
+        return true;
     }
 
     #endregion
@@ -149,11 +163,13 @@ public sealed record EncounterStatic8b(GameVersion Version)
 
     private bool IsMatchLocationExact(PKM pk)
     {
+        var met = pk.MetLocation;
         if (IsEgg)
-            return !pk.IsEgg || pk.MetLocation == Location || pk.MetLocation == Locations.LinkTrade6NPC;
-        if (!Roaming)
-            return pk.MetLocation == Location;
-        return IsRoamingLocation(pk);
+            return !pk.IsEgg || met == Location || met == Locations.LinkTrade6NPC;
+        if (IsRoaming)
+            return IsRoamingLocation(met);
+
+        return met == Location;
     }
 
     private bool IsMatchEggLocationExact(PKM pk)
@@ -200,7 +216,7 @@ public sealed record EncounterStatic8b(GameVersion Version)
         return LocationsHOME.IsLocationSWSHEgg(pk.Version, pk.MetLocation, pk.EggLocation, EggLocation);
     }
 
-    private static bool IsRoamingLocation(PKM pk) => RoamingLocations.Contains(pk.MetLocation);
+    private static bool IsRoamingLocation(ushort loc) => RoamingLocations.Contains(loc);
 
     #endregion
 }

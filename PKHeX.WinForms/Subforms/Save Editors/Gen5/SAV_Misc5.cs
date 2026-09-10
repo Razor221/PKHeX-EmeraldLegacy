@@ -28,13 +28,13 @@ public partial class SAV_Misc5 : Form
         WinFormsUtil.TranslateInterface(this, Main.CurrentLanguage);
         SAV = (SAV5)(Origin = sav).Clone();
 
+        CLB_MusicalProps.Items.AddRange(PropNames);
         swp = SAV.BattleSubwayPlay;
         sw = SAV.BattleSubway;
         ReadMain();
         LoadForest();
         ReadSubway();
         ReadEntralink();
-        ReadMedals();
         ReadMusical();
         ReadRecord();
     }
@@ -47,6 +47,7 @@ public partial class SAV_Misc5 : Form
         SaveForest();
         SaveSubway();
         SaveEntralink();
+        SaveMusical();
         SaveRecord();
 
         Forest.EnsureDecrypted(false);
@@ -113,7 +114,7 @@ public partial class SAV_Misc5 : Form
 
             default: throw new ArgumentOutOfRangeException(nameof(SAV.Version));
         }
-        uint valFly = ReadUInt32LittleEndian(SAV.Data.AsSpan(ofsFly));
+        uint valFly = ReadUInt32LittleEndian(SAV.Data[ofsFly..]);
         CLB_FlyDest.Items.Clear();
         CLB_FlyDest.Items.AddRange(FlyDestA);
         for (int i = 0; i < CLB_FlyDest.Items.Count; i++)
@@ -126,7 +127,6 @@ public partial class SAV_Misc5 : Form
 
         if (SAV is SAV5BW bw)
         {
-            TC_Misc.TabPages.Remove(TAB_Medals);
             GB_KeySystem.Visible = false;
             // Roamer
             cbr = [CB_Roamer642, CB_Roamer641];
@@ -149,7 +149,7 @@ public partial class SAV_Misc5 : Form
             }
 
             // Roamer status
-            // If you wish to re-catch thundurus/tornadus,
+            // If you wish to re-catch Thundurus/Tornadus,
             // set the status to "Go to route 7" and head
             // to the cabin in where old grandpa and grandma live
             // located at route 7.
@@ -195,22 +195,22 @@ public partial class SAV_Misc5 : Form
 
     private static List<ComboItem> GetStates() =>
     [
-        new ComboItem("Not roamed", 0),
-        new ComboItem("Roaming", 1),
-        new ComboItem("Defeated", 2),
-        new ComboItem("Captured", 3),
+        new("Not roamed", 0),
+        new("Roaming", 1),
+        new("Defeated", 2),
+        new("Captured", 3),
     ];
 
     private static List<ComboItem> GetRoamStatusStates() =>
     [
-        new ComboItem("Not happened", 0),
-        new ComboItem("Go to route 7", 1),
-        new ComboItem("Event finished", 3),
+        new("Not happened", 0),
+        new("Go to route 7", 1),
+        new("Event finished", 3),
     ];
 
     private void SaveMain()
     {
-        uint valFly = ReadUInt32LittleEndian(SAV.Data.AsSpan(ofsFly));
+        uint valFly = ReadUInt32LittleEndian(SAV.Data[ofsFly..]);
         for (int i = 0; i < CLB_FlyDest.Items.Count; i++)
         {
             if (FlyDestC[i] < 32)
@@ -226,7 +226,7 @@ public partial class SAV_Misc5 : Form
                 SAV.Data[ofs] = (byte)((SAV.Data[ofs] & ~(1 << (FlyDestC[i] & 7))) | ((CLB_FlyDest.GetItemChecked(i) ? 1 : 0) << (FlyDestC[i] & 7)));
             }
         }
-        WriteUInt32LittleEndian(SAV.Data.AsSpan(ofsFly), valFly);
+        WriteUInt32LittleEndian(SAV.Data[ofsFly..], valFly);
 
         if (SAV is SAV5BW bw)
         {
@@ -328,7 +328,16 @@ public partial class SAV_Misc5 : Form
             LB_FunfestMissions.Items.AddRange(FMTitles);
 
             CB_FMLevel.Items.Clear();
-            CB_FMLevel.Items.AddRange(["Lv.1", "Lv.2 +", "Lv.3 ++", "Lv.3 +++"]);
+            var levels = new ComboItem[]
+            {
+                new("Lv.1", 0),
+                new("Lv.2 +", 1),
+                new("Lv.3 ++", 2),
+                new("Lv.3 +++", 3),
+                new(GameInfo.Strings.specieslist[0], 7), // -1
+            };
+            CB_FMLevel.InitializeBinding();
+            CB_FMLevel.DataSource = new BindingSource(levels, string.Empty);
             SetNudMax();
             SetEntreeExpTooltip();
             LB_FunfestMissions.SelectedIndex = 0;
@@ -435,7 +444,7 @@ public partial class SAV_Misc5 : Form
 
         var record = block.GetMissionRecord(mission);
         CHK_FMNew.Checked = record.IsNew;
-        CB_FMLevel.SelectedIndex = record.Level;
+        CB_FMLevel.SelectedValue = record.Level;
         NUD_FMBestScore.SetValueClamped(record.Score);
         NUD_FMBestTotal.SetValueClamped(record.Total);
     }
@@ -450,7 +459,7 @@ public partial class SAV_Misc5 : Form
         if ((uint)mission > FestaBlock5.MaxMissionIndex)
             return;
 
-        var score = new Funfest5Score((int)NUD_FMBestTotal.Value, (int)NUD_FMBestScore.Value, CB_FMLevel.SelectedIndex & 3, CHK_FMNew.Checked);
+        var score = new Funfest5Score((int)NUD_FMBestTotal.Value, (int)NUD_FMBestScore.Value, WinFormsUtil.GetIndex(CB_FMLevel), CHK_FMNew.Checked);
         block.SetMissionRecord(mission, score);
     }
 
@@ -550,7 +559,7 @@ public partial class SAV_Misc5 : Form
         CB_Move.SelectedValue = (int)current.Move;
         CB_Gender.SelectedValue = (int)current.Gender;
         CB_Form.SelectedIndex = CB_Form.Items.Count <= current.Form ? 0 : current.Form;
-        NUD_Animation.SetValueClamped(current.Animation);
+        NUD_Animation.SetValueClamped((int)current.Animation);
         CurrentSlot = current;
         SetSprite(current);
     }
@@ -567,7 +576,7 @@ public partial class SAV_Misc5 : Form
 
     private void UpdateSlotValue(object sender, EventArgs e)
     {
-        if (CurrentSlot == null)
+        if (CurrentSlot is null)
             return;
 
         if (sender == CB_Species)
@@ -589,13 +598,9 @@ public partial class SAV_Misc5 : Form
         {
             CurrentSlot.Form = (byte)CB_Form.SelectedIndex;
         }
-        else if (sender == CHK_Invisible)
-        {
-            CurrentSlot.Invisible = CHK_Invisible.Checked;
-        }
         else if (sender == NUD_Animation)
         {
-            CurrentSlot.Animation = (int)NUD_Animation.Value;
+            CurrentSlot.Animation = (EntreeForestAnimation)NUD_Animation.Value;
         }
 
         SetSprite(CurrentSlot);
@@ -615,7 +620,6 @@ public partial class SAV_Misc5 : Form
     {
         var source = (SAV is SAV5BW ? Encounters5BW.DreamWorld_BW : Encounters5B2W2.DreamWorld_B2W2).Concat(Encounters5DR.DreamWorld_Common).ToList();
         var rnd = Util.Rand;
-        Span<ushort> moves = stackalloc ushort[4];
         foreach (var s in AllSlots)
         {
             int index = rnd.Next(source.Count);
@@ -625,14 +629,14 @@ public partial class SAV_Misc5 : Form
             s.Form = slot.Form;
             s.Gender = !((IFixedGender)slot).IsFixedGender ? PersonalTable.B2W2[slot.Species].RandomGender() : slot.Gender;
 
-            slot.Moves.CopyTo(moves);
+            ReadOnlySpan<ushort> moves = slot.Moves;
             var count = moves.Length - moves.Count<ushort>(0);
             s.Move = count == 0 ? (ushort)0 : moves[rnd.Next(count)];
         }
         ChangeArea(this, EventArgs.Empty); // refresh
         NUD_Unlocked.Value = 8;
         CHK_Area9.Checked = true;
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
     }
 
     private static List<ComboItem> GetGenderChoices(ushort species)
@@ -685,21 +689,21 @@ public partial class SAV_Misc5 : Form
         CHK_SWNPCMet.Checked = sw.NPCMet;
 
         // Current Run Checks
-        CHK_SingleSet.Checked = sw.SingleSet == (sw.SinglePast / 7 + 1);
+        CHK_SingleSet.Checked = sw.SingleSet == ((sw.SinglePast / 7) + 1);
         L_SinglePast.Text = CHK_SingleSet.Checked ? "Current" : "Past";
-        CHK_DoubleSet.Checked = sw.DoubleSet == (sw.DoublePast / 7 + 1);
+        CHK_DoubleSet.Checked = sw.DoubleSet == ((sw.DoublePast / 7) + 1);
         L_DoublePast.Text = CHK_DoubleSet.Checked ? "Current" : "Past";
-        CHK_MultiNPCSet.Checked = sw.MultiNPCSet == (sw.MultiNPCPast / 7 + 1);
+        CHK_MultiNPCSet.Checked = sw.MultiNPCSet == ((sw.MultiNPCPast / 7) + 1);
         L_MultiNpcPast.Text = CHK_MultiNPCSet.Checked ? "Current" : "Past";
-        CHK_MultiFriendsSet.Checked = sw.MultiFriendsSet == (sw.MultiFriendsPast / 7 + 1);
+        CHK_MultiFriendsSet.Checked = sw.MultiFriendsSet == ((sw.MultiFriendsPast / 7) + 1);
         L_MultiFriendsPast.Text = CHK_MultiFriendsSet.Checked ? "Current" : "Past";
-        CHK_SuperSingleSet.Checked = sw.SuperSingleSet == (sw.SuperSinglePast / 7 + 1);
+        CHK_SuperSingleSet.Checked = sw.SuperSingleSet == ((sw.SuperSinglePast / 7) + 1);
         L_SSinglePast.Text = CHK_SuperSingleSet.Checked ? "Current" : "Past";
-        CHK_SuperDoubleSet.Checked = sw.SuperDoubleSet == (sw.SuperDoublePast / 7 + 1);
+        CHK_SuperDoubleSet.Checked = sw.SuperDoubleSet == ((sw.SuperDoublePast / 7) + 1);
         L_SDoublePast.Text = CHK_SuperDoubleSet.Checked ? "Current" : "Past";
-        CHK_SuperMultiNPCSet.Checked = sw.SuperMultiNPCSet == (sw.SuperMultiNPCPast / 7 + 1);
+        CHK_SuperMultiNPCSet.Checked = sw.SuperMultiNPCSet == ((sw.SuperMultiNPCPast / 7) + 1);
         L_SMultiNpcPast.Text = CHK_SuperMultiNPCSet.Checked ? "Current" : "Past";
-        CHK_SuperMultiFriendsSet.Checked = sw.SuperMultiFriendsSet == (sw.SuperMultiFriendsPast / 7 + 1);
+        CHK_SuperMultiFriendsSet.Checked = sw.SuperMultiFriendsSet == ((sw.SuperMultiFriendsPast / 7) + 1);
         L_SMultiFriendsPast.Text = CHK_SuperMultiFriendsSet.Checked ? "Current" : "Past";
 
         // Normal
@@ -793,14 +797,14 @@ public partial class SAV_Misc5 : Form
         sw.SuperMultiFriendsRecord = (int)NUD_SMultiFriendsRecord.Value;
 
         // Current Run Checks
-        sw.SingleSet = (CHK_SingleSet.Checked ? sw.SinglePast / 7 + 1 : 0);
-        sw.DoubleSet = (CHK_DoubleSet.Checked ? sw.DoublePast / 7 + 1 : 0);
-        sw.MultiNPCSet = (CHK_MultiNPCSet.Checked ? sw.MultiNPCPast / 7 + 1 : 0);
-        sw.MultiFriendsSet = (CHK_MultiFriendsSet.Checked ? sw.MultiFriendsPast / 7 + 1 : 0);
-        sw.SuperSingleSet = (CHK_SuperSingleSet.Checked ? sw.SuperSinglePast / 7 + 1 : 0);
-        sw.SuperDoubleSet = (CHK_SuperDoubleSet.Checked ? sw.SuperDoublePast / 7 + 1 : 0);
-        sw.SuperMultiNPCSet = (CHK_SuperMultiNPCSet.Checked ? sw.SuperMultiNPCPast / 7 + 1 : 0);
-        sw.SuperMultiFriendsSet = (CHK_SuperMultiFriendsSet.Checked ? sw.SuperMultiFriendsPast / 7 + 1 : 0);
+        sw.SingleSet = (CHK_SingleSet.Checked ? (sw.SinglePast / 7) + 1 : 0);
+        sw.DoubleSet = (CHK_DoubleSet.Checked ? (sw.DoublePast / 7) + 1 : 0);
+        sw.MultiNPCSet = (CHK_MultiNPCSet.Checked ? (sw.MultiNPCPast / 7) + 1 : 0);
+        sw.MultiFriendsSet = (CHK_MultiFriendsSet.Checked ? (sw.MultiFriendsPast / 7) + 1 : 0);
+        sw.SuperSingleSet = (CHK_SuperSingleSet.Checked ? (sw.SuperSinglePast / 7) + 1 : 0);
+        sw.SuperDoubleSet = (CHK_SuperDoubleSet.Checked ? (sw.SuperDoublePast / 7) + 1 : 0);
+        sw.SuperMultiNPCSet = (CHK_SuperMultiNPCSet.Checked ? (sw.SuperMultiNPCPast / 7) + 1 : 0);
+        sw.SuperMultiFriendsSet = (CHK_SuperMultiFriendsSet.Checked ? (sw.SuperMultiFriendsPast / 7) + 1 : 0);
     }
 
     private const string ForestCityBinFilter = "Forest City Bin|*.fc5";
@@ -816,7 +820,7 @@ public partial class SAV_Misc5 : Form
         if (sfd.ShowDialog() != DialogResult.OK)
             return;
 
-        var data = bw.Forest.ForestCity.ToArray();
+        var data = bw.Forest.ForestCity.Span;
         File.WriteAllBytes(sfd.FileName, data);
     }
 
@@ -842,107 +846,19 @@ public partial class SAV_Misc5 : Form
         bw.SetData(bw.Forest.ForestCity.Span, data);
     }
 
-    private readonly string[] MedalNames = Util.GetStringList("medals", Main.CurrentLanguage);
-    private readonly string[] MedalTypeNames = Util.GetStringList("medal_types", Main.CurrentLanguage);
-
-    private void ReadMedals()
-    {
-        if (SAV is SAV5B2W2)
-        {
-            CB_CurrentMedal.Items.AddRange(MedalNames);
-            CB_MedalState.Items.AddRange(["Unobtained", "Can Obtain Hint Medal", "Hint Medal Obtained", "Can Obtain Medal", "Medal Obtained"]);
-            CB_CurrentMedal.SelectedIndex = 0;
-        }
-    }
-
-    private void CB_CurrentMedal_SelectedIndexChanged(object sender, EventArgs e)
-    {
-        if (SAV is SAV5B2W2 b2w2)
-        {
-            var index = CB_CurrentMedal.SelectedIndex;
-            var medal = b2w2.Medals[index];
-            var type = MedalList5.GetMedalType(index);
-            TB_MedalType.Text = MedalTypeNames[(int)type];
-            CB_MedalState.SelectedIndex = (int)medal.State;
-            if (medal.CanHaveDate)
-            {
-                CAL_MedalDate.Value = medal.Date.ToDateTime(new TimeOnly());
-                CAL_MedalDate.Enabled = true;
-            }
-            else
-            {
-                CAL_MedalDate.Enabled = false;
-                CAL_MedalDate.ValueChanged -= CAL_MedalDate_ValueChanged;
-                CAL_MedalDate.Value = EncounterDate.GetDateNDS().ToDateTime(new TimeOnly());
-                CAL_MedalDate.ValueChanged += CAL_MedalDate_ValueChanged;
-            }
-            CHK_MedalUnread.Checked = medal.IsUnread;
-        }
-    }
-
-    private void CB_MedalState_SelectedIndexChanged(object sender, EventArgs e)
-    {
-        if (SAV is SAV5B2W2 b2w2)
-        {
-            var medal = b2w2.Medals[CB_CurrentMedal.SelectedIndex];
-            medal.State = (Medal5State)CB_MedalState.SelectedIndex;
-            if (medal.CanHaveDate)
-            {
-                if (!medal.HasDate)
-                    medal.Date = EncounterDate.GetDateNDS();
-                CAL_MedalDate.Enabled = true;
-            }
-            else
-            {
-                CAL_MedalDate.Enabled = false;
-            }
-        }
-    }
-
-    private void CAL_MedalDate_ValueChanged(object? sender, EventArgs e)
-    {
-        if (SAV is SAV5B2W2 b2w2)
-        {
-            var medal = b2w2.Medals[CB_CurrentMedal.SelectedIndex];
-            medal.Date = DateOnly.FromDateTime(CAL_MedalDate.Value);
-        }
-    }
-
-    private void CHK_MedalUnread_CheckedChanged(object sender, EventArgs e)
-    {
-        if (SAV is SAV5B2W2 b2w2)
-        {
-            var medal = b2w2.Medals[CB_CurrentMedal.SelectedIndex];
-            medal.IsUnread = CHK_MedalUnread.Checked;
-        }
-    }
-
-    private void B_ObtainAllMedals_Click(object sender, EventArgs e)
-    {
-        if (SAV is SAV5B2W2 b2w2)
-        {
-            var now = EncounterDate.GetDateNDS();
-            b2w2.Medals.ObtainAll(now, unread: true);
-            System.Media.SystemSounds.Asterisk.Play();
-        }
-    }
-
     private readonly string[] PropNames = Util.GetStringList("props", Main.CurrentLanguage);
 
     private void ReadMusical()
     {
-        CB_Prop.Items.AddRange(PropNames);
-        CB_Prop.SelectedIndex = 0;
+        CLB_MusicalProps.SelectedIndex = 0;
+        for (int i = 0; i < PropNames.Length; i++)
+            CLB_MusicalProps.SetItemChecked(i, SAV.Musical.GetHasProp(i));
     }
 
-    private void CB_Prop_SelectedIndexChanged(object sender, EventArgs e)
+    private void SaveMusical()
     {
-        CHK_PropObtained.Checked = SAV.Musical.GetHasProp(CB_Prop.SelectedIndex);
-    }
-
-    private void CHK_PropObtained_CheckedChanged(object sender, EventArgs e)
-    {
-        SAV.Musical.SetHasProp(CB_Prop.SelectedIndex, CHK_PropObtained.Checked);
+        for (int i = 0; i < PropNames.Length; i++)
+            SAV.Musical.SetHasProp(i, CLB_MusicalProps.GetItemChecked(i));
     }
 
     private void CHK_SingleSet_CheckedChanged(object sender, EventArgs e)
@@ -989,6 +905,7 @@ public partial class SAV_Misc5 : Form
     {
         SAV.Musical.UnlockAllMusicalProps();
         B_UnlockAllProps.Enabled = false;
-        System.Media.SystemSounds.Asterisk.Play();
+        ReadMusical();
+        WinFormsUtil.Asterisk();
     }
 }

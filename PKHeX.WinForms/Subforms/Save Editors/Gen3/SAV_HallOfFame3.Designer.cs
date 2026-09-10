@@ -1,3 +1,5 @@
+using PKHeX.Core;
+
 namespace PKHeX.WinForms
 {
     partial class SAV_HallOfFame3
@@ -28,134 +30,135 @@ namespace PKHeX.WinForms
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SAV_HallOfFame3));
             LB_Entries = new System.Windows.Forms.ListBox();
-            TB_TID = new System.Windows.Forms.TextBox();
             CB_Species = new System.Windows.Forms.ComboBox();
             NUD_Members = new System.Windows.Forms.NumericUpDown();
-            TB_SID = new System.Windows.Forms.TextBox();
             TB_PID = new System.Windows.Forms.TextBox();
-            TB_Nickname = new System.Windows.Forms.TextBox();
-            label1 = new System.Windows.Forms.Label();
-            label2 = new System.Windows.Forms.Label();
-            label3 = new System.Windows.Forms.Label();
-            label4 = new System.Windows.Forms.Label();
-            label5 = new System.Windows.Forms.Label();
+            TB_Nickname = new PKHeX.WinForms.Controls.RenderedString();
+            L_TID = new System.Windows.Forms.Label();
+            L_SID = new System.Windows.Forms.Label();
+            L_PID = new System.Windows.Forms.Label();
+            L_Nickname = new System.Windows.Forms.Label();
+            L_Level = new System.Windows.Forms.Label();
             NUD_Level = new System.Windows.Forms.NumericUpDown();
             B_Save = new System.Windows.Forms.Button();
             B_Cancel = new System.Windows.Forms.Button();
+            TB_TID = new System.Windows.Forms.MaskedTextBox();
+            TB_SID = new System.Windows.Forms.MaskedTextBox();
+            CHK_Shiny = new System.Windows.Forms.CheckBox();
+            B_Clear = new System.Windows.Forms.Button();
+            PB_Sprite = new System.Windows.Forms.PictureBox();
+            B_ImportParty = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)NUD_Members).BeginInit();
             ((System.ComponentModel.ISupportInitialize)NUD_Level).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)PB_Sprite).BeginInit();
             SuspendLayout();
             // 
             // LB_Entries
             // 
+            LB_Entries.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left;
             LB_Entries.FormattingEnabled = true;
             LB_Entries.Location = new System.Drawing.Point(12, 14);
             LB_Entries.Name = "LB_Entries";
-            LB_Entries.Size = new System.Drawing.Size(120, 214);
+            LB_Entries.Size = new System.Drawing.Size(120, 242);
             LB_Entries.TabIndex = 0;
-            // 
-            // TB_TID
-            // 
-            TB_TID.Location = new System.Drawing.Point(215, 96);
-            TB_TID.Name = "TB_TID";
-            TB_TID.Size = new System.Drawing.Size(100, 23);
-            TB_TID.TabIndex = 1;
             // 
             // CB_Species
             // 
             CB_Species.FormattingEnabled = true;
-            CB_Species.Location = new System.Drawing.Point(169, 14);
+            CB_Species.Location = new System.Drawing.Point(223, 87);
             CB_Species.Name = "CB_Species";
-            CB_Species.Size = new System.Drawing.Size(184, 23);
+            CB_Species.Size = new System.Drawing.Size(119, 25);
             CB_Species.TabIndex = 2;
             // 
             // NUD_Members
             // 
-            NUD_Members.Location = new System.Drawing.Point(360, 14);
+            NUD_Members.Location = new System.Drawing.Point(181, 14);
             NUD_Members.Maximum = new decimal(new int[] { 5, 0, 0, 0 });
             NUD_Members.Name = "NUD_Members";
-            NUD_Members.Size = new System.Drawing.Size(35, 23);
+            NUD_Members.Size = new System.Drawing.Size(35, 25);
             NUD_Members.TabIndex = 3;
-            // 
-            // TB_SID
-            // 
-            TB_SID.Location = new System.Drawing.Point(215, 129);
-            TB_SID.Name = "TB_SID";
-            TB_SID.Size = new System.Drawing.Size(100, 23);
-            TB_SID.TabIndex = 4;
             // 
             // TB_PID
             // 
-            TB_PID.Location = new System.Drawing.Point(204, 164);
+            TB_PID.CharacterCasing = System.Windows.Forms.CharacterCasing.Upper;
+            TB_PID.Font = new System.Drawing.Font("Courier New", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, 0);
+            TB_PID.Location = new System.Drawing.Point(223, 175);
+            TB_PID.MaxLength = 8;
             TB_PID.Name = "TB_PID";
-            TB_PID.Size = new System.Drawing.Size(155, 23);
+            TB_PID.Size = new System.Drawing.Size(68, 20);
             TB_PID.TabIndex = 5;
+            TB_PID.Text = "00000000";
+            TB_PID.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
             // 
             // TB_Nickname
             // 
-            TB_Nickname.Location = new System.Drawing.Point(240, 197);
+            TB_Nickname.DisplayContext = EntityContext.Gen3;
+            TB_Nickname.Location = new System.Drawing.Point(223, 117);
+            TB_Nickname.MaxLength = 10;
             TB_Nickname.Name = "TB_Nickname";
-            TB_Nickname.Size = new System.Drawing.Size(155, 23);
+            TB_Nickname.Size = new System.Drawing.Size(120, 25);
             TB_Nickname.TabIndex = 6;
+            TB_Nickname.Text = "WWWWWWWW";
             // 
-            // label1
+            // L_TID
             // 
-            label1.AutoSize = true;
-            label1.Location = new System.Drawing.Point(170, 99);
-            label1.Name = "label1";
-            label1.Size = new System.Drawing.Size(39, 15);
-            label1.TabIndex = 7;
-            label1.Text = "TID16:";
+            L_TID.Location = new System.Drawing.Point(137, 196);
+            L_TID.Name = "L_TID";
+            L_TID.Size = new System.Drawing.Size(80, 24);
+            L_TID.TabIndex = 7;
+            L_TID.Text = "TID:";
+            L_TID.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
-            // label2
+            // L_SID
             // 
-            label2.AutoSize = true;
-            label2.Location = new System.Drawing.Point(170, 132);
-            label2.Name = "label2";
-            label2.Size = new System.Drawing.Size(39, 15);
-            label2.TabIndex = 8;
-            label2.Text = "SID16:";
+            L_SID.Location = new System.Drawing.Point(137, 220);
+            L_SID.Name = "L_SID";
+            L_SID.Size = new System.Drawing.Size(80, 24);
+            L_SID.TabIndex = 8;
+            L_SID.Text = "SID:";
+            L_SID.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
-            // label3
+            // L_PID
             // 
-            label3.AutoSize = true;
-            label3.Location = new System.Drawing.Point(170, 167);
-            label3.Name = "label3";
-            label3.Size = new System.Drawing.Size(28, 15);
-            label3.TabIndex = 9;
-            label3.Text = "PID:";
+            L_PID.Location = new System.Drawing.Point(137, 172);
+            L_PID.Name = "L_PID";
+            L_PID.Size = new System.Drawing.Size(80, 24);
+            L_PID.TabIndex = 9;
+            L_PID.Text = "PID:";
+            L_PID.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
-            // label4
+            // L_Nickname
             // 
-            label4.AutoSize = true;
-            label4.Location = new System.Drawing.Point(170, 200);
-            label4.Name = "label4";
-            label4.Size = new System.Drawing.Size(64, 15);
-            label4.TabIndex = 10;
-            label4.Text = "Nickname:";
+            L_Nickname.Location = new System.Drawing.Point(137, 115);
+            L_Nickname.Name = "L_Nickname";
+            L_Nickname.Size = new System.Drawing.Size(80, 24);
+            L_Nickname.TabIndex = 10;
+            L_Nickname.Text = "Nickname:";
+            L_Nickname.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
-            // label5
+            // L_Level
             // 
-            label5.AutoSize = true;
-            label5.Location = new System.Drawing.Point(170, 61);
-            label5.Name = "label5";
-            label5.Size = new System.Drawing.Size(22, 15);
-            label5.TabIndex = 11;
-            label5.Text = "LV:";
+            L_Level.Location = new System.Drawing.Point(137, 145);
+            L_Level.Name = "L_Level";
+            L_Level.Size = new System.Drawing.Size(80, 24);
+            L_Level.TabIndex = 11;
+            L_Level.Text = "Level:";
+            L_Level.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // NUD_Level
             // 
-            NUD_Level.Location = new System.Drawing.Point(198, 59);
+            NUD_Level.Location = new System.Drawing.Point(223, 146);
+            NUD_Level.Maximum = new decimal(new int[] { 255, 0, 0, 0 });
             NUD_Level.Name = "NUD_Level";
-            NUD_Level.Size = new System.Drawing.Size(49, 23);
+            NUD_Level.Size = new System.Drawing.Size(40, 25);
             NUD_Level.TabIndex = 12;
             NUD_Level.Value = new decimal(new int[] { 1, 0, 0, 0 });
             // 
             // B_Save
             // 
-            B_Save.Location = new System.Drawing.Point(306, 235);
+            B_Save.Anchor = System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right;
+            B_Save.Location = new System.Drawing.Point(389, 191);
             B_Save.Name = "B_Save";
             B_Save.Size = new System.Drawing.Size(89, 27);
             B_Save.TabIndex = 13;
@@ -165,7 +168,8 @@ namespace PKHeX.WinForms
             // 
             // B_Cancel
             // 
-            B_Cancel.Location = new System.Drawing.Point(211, 235);
+            B_Cancel.Anchor = System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right;
+            B_Cancel.Location = new System.Drawing.Point(389, 224);
             B_Cancel.Name = "B_Cancel";
             B_Cancel.Size = new System.Drawing.Size(89, 27);
             B_Cancel.TabIndex = 14;
@@ -173,27 +177,95 @@ namespace PKHeX.WinForms
             B_Cancel.UseVisualStyleBackColor = true;
             B_Cancel.Click += B_Cancel_Click;
             // 
+            // TB_TID
+            // 
+            TB_TID.Location = new System.Drawing.Point(223, 198);
+            TB_TID.Mask = "00000";
+            TB_TID.Name = "TB_TID";
+            TB_TID.Size = new System.Drawing.Size(44, 25);
+            TB_TID.TabIndex = 15;
+            TB_TID.Text = "00000";
+            TB_TID.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
+            // 
+            // TB_SID
+            // 
+            TB_SID.Location = new System.Drawing.Point(223, 222);
+            TB_SID.Mask = "00000";
+            TB_SID.Name = "TB_SID";
+            TB_SID.Size = new System.Drawing.Size(44, 25);
+            TB_SID.TabIndex = 16;
+            TB_SID.Text = "00000";
+            TB_SID.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
+            // 
+            // CHK_Shiny
+            // 
+            CHK_Shiny.AutoSize = true;
+            CHK_Shiny.Enabled = false;
+            CHK_Shiny.Location = new System.Drawing.Point(297, 175);
+            CHK_Shiny.Name = "CHK_Shiny";
+            CHK_Shiny.Size = new System.Drawing.Size(57, 21);
+            CHK_Shiny.TabIndex = 17;
+            CHK_Shiny.Text = "Shiny";
+            CHK_Shiny.UseVisualStyleBackColor = true;
+            // 
+            // B_Clear
+            // 
+            B_Clear.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
+            B_Clear.Location = new System.Drawing.Point(389, 14);
+            B_Clear.Name = "B_Clear";
+            B_Clear.Size = new System.Drawing.Size(89, 27);
+            B_Clear.TabIndex = 18;
+            B_Clear.Text = "Clear";
+            B_Clear.UseVisualStyleBackColor = true;
+            B_Clear.Click += B_Clear_Click;
+            // 
+            // PB_Sprite
+            // 
+            PB_Sprite.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            PB_Sprite.Location = new System.Drawing.Point(223, 14);
+            PB_Sprite.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            PB_Sprite.Name = "PB_Sprite";
+            PB_Sprite.Size = new System.Drawing.Size(81, 67);
+            PB_Sprite.SizeMode = System.Windows.Forms.PictureBoxSizeMode.CenterImage;
+            PB_Sprite.TabIndex = 32;
+            PB_Sprite.TabStop = false;
+            // 
+            // B_ImportParty
+            // 
+            B_ImportParty.Anchor = System.Windows.Forms.AnchorStyles.Right;
+            B_ImportParty.Location = new System.Drawing.Point(389, 65);
+            B_ImportParty.Name = "B_ImportParty";
+            B_ImportParty.Size = new System.Drawing.Size(89, 100);
+            B_ImportParty.TabIndex = 33;
+            B_ImportParty.Text = "Import All From Party";
+            B_ImportParty.UseVisualStyleBackColor = true;
+            B_ImportParty.Click += B_ImportParty_Click;
+            // 
             // SAV_HallOfFame3
             // 
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Inherit;
-            ClientSize = new System.Drawing.Size(407, 274);
+            ClientSize = new System.Drawing.Size(490, 263);
+            Controls.Add(B_ImportParty);
+            Controls.Add(PB_Sprite);
+            Controls.Add(B_Clear);
+            Controls.Add(CHK_Shiny);
+            Controls.Add(TB_SID);
+            Controls.Add(TB_TID);
             Controls.Add(B_Cancel);
             Controls.Add(B_Save);
             Controls.Add(NUD_Level);
-            Controls.Add(label5);
-            Controls.Add(label4);
-            Controls.Add(label3);
-            Controls.Add(label2);
-            Controls.Add(label1);
+            Controls.Add(L_Level);
+            Controls.Add(L_Nickname);
+            Controls.Add(L_PID);
+            Controls.Add(L_SID);
+            Controls.Add(L_TID);
             Controls.Add(TB_Nickname);
             Controls.Add(TB_PID);
-            Controls.Add(TB_SID);
             Controls.Add(NUD_Members);
             Controls.Add(CB_Species);
-            Controls.Add(TB_TID);
             Controls.Add(LB_Entries);
             FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
+            Icon = Properties.Resources.Icon;
             MaximizeBox = false;
             MinimizeBox = false;
             Name = "SAV_HallOfFame3";
@@ -201,6 +273,7 @@ namespace PKHeX.WinForms
             Text = "Hall of Fame Viewer";
             ((System.ComponentModel.ISupportInitialize)NUD_Members).EndInit();
             ((System.ComponentModel.ISupportInitialize)NUD_Level).EndInit();
+            ((System.ComponentModel.ISupportInitialize)PB_Sprite).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -208,19 +281,23 @@ namespace PKHeX.WinForms
         #endregion
 
         private System.Windows.Forms.ListBox LB_Entries;
-        private System.Windows.Forms.TextBox TB_TID;
         private System.Windows.Forms.ComboBox CB_Species;
         private System.Windows.Forms.NumericUpDown NUD_Members;
-        private System.Windows.Forms.TextBox TB_SID;
         private System.Windows.Forms.TextBox TB_PID;
-        private System.Windows.Forms.TextBox TB_Nickname;
-        private System.Windows.Forms.Label label1;
-        private System.Windows.Forms.Label label2;
-        private System.Windows.Forms.Label label3;
-        private System.Windows.Forms.Label label4;
-        private System.Windows.Forms.Label label5;
+        private PKHeX.WinForms.Controls.RenderedString TB_Nickname;
+        private System.Windows.Forms.Label L_TID;
+        private System.Windows.Forms.Label L_SID;
+        private System.Windows.Forms.Label L_PID;
+        private System.Windows.Forms.Label L_Nickname;
+        private System.Windows.Forms.Label L_Level;
         private System.Windows.Forms.NumericUpDown NUD_Level;
         private System.Windows.Forms.Button B_Save;
         private System.Windows.Forms.Button B_Cancel;
+        private System.Windows.Forms.MaskedTextBox TB_TID;
+        private System.Windows.Forms.MaskedTextBox TB_SID;
+        private System.Windows.Forms.CheckBox CHK_Shiny;
+        private System.Windows.Forms.Button B_Clear;
+        private System.Windows.Forms.PictureBox PB_Sprite;
+        private System.Windows.Forms.Button B_ImportParty;
     }
 }

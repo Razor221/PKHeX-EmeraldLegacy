@@ -9,7 +9,7 @@ public static class Wild8bRNG
 {
     private const int UNSET = -1;
 
-    public static void ApplyDetails(PKM pk, EncounterCriteria criteria,
+    public static void ApplyDetails(PB8 pk, in EncounterCriteria criteria,
         Shiny shiny = Shiny.FixedValue,
         int flawless = -1,
         AbilityPermission ability = AbilityPermission.Any12,
@@ -39,7 +39,7 @@ public static class Wild8bRNG
         }
     }
 
-    public static bool TryApplyFromSeed(PKM pk, EncounterCriteria criteria, Shiny shiny, int flawless, XorShift128 xors, AbilityPermission ability)
+    public static bool TryApplyFromSeed(PB8 pk, in EncounterCriteria criteria, Shiny shiny, int flawless, XorShift128 xors, AbilityPermission ability)
     {
         // Encryption Constant
         pk.EncryptionConstant = xors.NextUInt();
@@ -65,6 +65,8 @@ public static class Wild8bRNG
             if (shiny == Shiny.AlwaysStar && type != Shiny.AlwaysStar)
                 return false;
         }
+        if (shiny is Shiny.Random && criteria.IsSpecifiedShiny() && !criteria.IsSatisfiedShiny(GetShinyXor(pid, pk.ID32), 16))
+            return false;
         pk.PID = pid;
 
         // Check IVs: Create flawless IVs at random indexes, then the random IVs for not flawless.
@@ -86,15 +88,15 @@ public static class Wild8bRNG
                 ivs[i] = xors.NextInt(0, MAX + 1);
         }
 
-        if (!criteria.IsIVsCompatibleSpeedLast(ivs, 8))
+        if (!criteria.IsIVsCompatibleSpeedLast(ivs))
             return false;
 
-        pk.IV_HP = ivs[0];
-        pk.IV_ATK = ivs[1];
-        pk.IV_DEF = ivs[2];
-        pk.IV_SPA = ivs[3];
-        pk.IV_SPD = ivs[4];
-        pk.IV_SPE = ivs[5];
+        pk.IV32 = (uint)ivs[0] |
+                  (uint)(ivs[1] << 05) |
+                  (uint)(ivs[2] << 10) |
+                  (uint)(ivs[5] << 15) | // speed is last in the array, but in the middle of the 32bit value
+                  (uint)(ivs[3] << 20) |
+                  (uint)(ivs[4] << 25);
 
         // Ability
         var n = ability switch
@@ -122,27 +124,29 @@ public static class Wild8bRNG
         else
         {
             byte gender = xors.NextUInt(253) + 1 < genderRatio ? (byte)1 : (byte)0;
-            if (!criteria.IsGenderSatisfied(gender))
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
                 return false;
             pk.Gender = gender;
         }
 
-        if (!criteria.IsSpecifiedNature())
-            pk.Nature = (Nature)xors.NextUInt(25);
-        else // Skip nature, assuming Synchronize
-            pk.Nature = criteria.Nature;
-        pk.StatNature = pk.Nature;
+        // If nature is specified, assume it is generated with a Synchronize lead (forcing Nature to specified value).
+        var nature = criteria.IsSpecifiedNature() ? criteria.GetNature() : (Nature)xors.NextUInt(25);
+        if (!criteria.IsSatisfiedNature(nature))
+            return false;
+
+        pk.StatAlignment = pk.Nature = nature;
 
         // Remainder
-        var scale = (IScaledSize)pk;
-        scale.HeightScalar = (byte)(xors.NextUInt(0x81) + xors.NextUInt(0x80));
-        scale.WeightScalar = (byte)(xors.NextUInt(0x81) + xors.NextUInt(0x80));
+        pk.HeightScalar = (byte)(xors.NextUInt(0x81) + xors.NextUInt(0x80));
+        pk.WeightScalar = (byte)(xors.NextUInt(0x81) + xors.NextUInt(0x80));
+        // Note: HOME can end up resetting Weight if Height is 0; however, the reversibility of PKM=>seed is not implemented/possible.
+        // If this ever (impossible) happens, be sure to add that check similar to SW/SH's scale matching logic.
 
         // Item, don't care
         return true;
     }
 
-    private static uint GetRevisedPID(uint fakeTID, uint pid, ITrainerID32 tr)
+    private static uint GetRevisedPID<T>(uint fakeTID, uint pid, T tr) where T : ITrainerID32
     {
         var xor = GetShinyXor(pid, fakeTID);
         var newXor = GetShinyXor(pid, tr.ID32);

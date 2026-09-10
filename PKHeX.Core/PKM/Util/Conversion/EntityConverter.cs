@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using static PKHeX.Core.EntityConverterResult;
 using static PKHeX.Core.GameVersion;
 
@@ -30,26 +31,23 @@ public static class EntityConverter
     /// </summary>
     public static IHomeStorage HOME { get; set; } = new HomeStorageFacade();
 
-    private static GameVersion _vc1 = RD;
-    private static GameVersion _vc2 = SI;
-
     /// <summary>
     /// Default source game for trading from PK2 to PK7.
     /// </summary>
     public static GameVersion VirtualConsoleSourceGen1
     {
-        get => _vc1;
-        set => _vc1 = (value is RD or BU or GN or YW) ? value : RD;
-    }
+        get;
+        set => field = (value is RD or BU or GN or YW) ? value : RD;
+    } = RD;
 
     /// <summary>
     /// Default source game for trading from PK2 to PK7.
     /// </summary>
     public static GameVersion VirtualConsoleSourceGen2
     {
-        get => _vc2;
-        set => _vc2 = (value is GD or SI or C) ? value : SI;
-    }
+        get;
+        set => field = (value is GD or SI or C) ? value : SI;
+    } = SI;
 
     /// <summary>
     /// Retain the Met Date when transferring from Gen4 to Gen5.
@@ -60,8 +58,8 @@ public static class EntityConverter
     /// <summary>
     /// Checks if the input <see cref="PKM"/> file is capable of being converted to the desired format.
     /// </summary>
-    /// <param name="pk"></param>
-    /// <param name="format"></param>
+    /// <param name="pk">PKM to convert</param>
+    /// <param name="format">Format to convert to</param>
     /// <returns>True if it can be converted to the requested format value.</returns>
     public static bool IsConvertibleToFormat(PKM pk, byte format)
     {
@@ -86,6 +84,15 @@ public static class EntityConverter
         {
             result = None;
             return pk;
+        }
+
+        if (pk is PKH pkh)
+        {
+            if (TryConvertFromHOME(pkh, destType, out var x))
+            {
+                result = Success;
+                return x;
+            }
         }
 
         var entity = ConvertPKM(pk, destType, fromType, out result);
@@ -136,7 +143,7 @@ public static class EntityConverter
         while (true)
         {
             entity = IntermediaryConvert(entity, destType, ref result);
-            if (entity == null) // fail convert
+            if (entity is null) // fail convert
                 return null;
             if (entity.GetType() == destType) // finish convert
                 return entity;
@@ -171,6 +178,15 @@ public static class EntityConverter
 
         _ => GetFinalResult(pk, destType, ref result),
     };
+
+    private static bool TryConvertFromHOME(PKH pkh, Type destType, [NotNullWhen(true)] out PKM? result)
+    {
+        result = null;
+        var type = PKH.GetType(destType);
+        if (type is not HomeGameDataFormat.None)
+            result = pkh.ConvertToPKM(type);
+        return result != null;
+    }
 
     private static PKM? GetFinalResult(PKM pk, Type destType, ref EntityConverterResult result)
     {
@@ -308,7 +324,7 @@ public static class EntityConverter
             return false;
         }
         var convert = ConvertToType(pk, target.GetType(), out result);
-        if (convert == null)
+        if (convert is null)
         {
             converted = target;
             return false;
@@ -321,14 +337,17 @@ public static class EntityConverter
     /// <summary>
     /// Checks if a <see cref="GBPKM"/> is incompatible with the Generation 1/2 destination environment.
     /// </summary>
+    /// <param name="pk">Target type PKM with misc properties accessible for checking.</param>
+    /// <param name="destJapanese">Whether the destination environment is Japanese</param>
+    /// <param name="srcJapanese">Whether the source PKM is Japanese</param>
     public static bool IsCompatibleGB(PKM pk, bool destJapanese, bool srcJapanese)
     {
         if (pk.Format > 2)
-            return true;
+            return true; // Upwards transfers are unaffected by language, and Gen3+ can represent all languages.
         if (destJapanese == srcJapanese)
-            return true;
+            return true; // Can trade between same language sets.
         if (pk is SK2 sk2 && sk2.IsPossible(srcJapanese))
-            return true;
+            return true; // Language differentiation
         return false;
     }
 }

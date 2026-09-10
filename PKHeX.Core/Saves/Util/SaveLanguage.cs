@@ -190,10 +190,10 @@ public static class SaveLanguage
         }
         return default;
 
-        static bool MaybeRD(GameVersion game) => game is RD or RB or RBY or Any;
-        static bool MaybeGN(GameVersion game) => game is GN or RB or RBY or Any;
-        static bool MaybeBU(GameVersion game) => game is BU or RBY or Any;
-        static bool MaybeYW(GameVersion game) => game is YW or RBY or Any;
+        static bool MaybeRD(GameVersion version) => version is RD or RB or RBY or Any;
+        static bool MaybeGN(GameVersion version) => version is GN or RB or RBY or Any;
+        static bool MaybeBU(GameVersion version) => version is BU or RBY or Any;
+        static bool MaybeYW(GameVersion version) => version is YW or RBY or Any;
     }
 
     /// <inheritdoc cref="InferFrom(SAV1)"/>
@@ -237,9 +237,9 @@ public static class SaveLanguage
         if (MaybeSI(hint) && Contains(name, "si")) return (OverrideLanguageGen2, SI);
         return default;
 
-        static bool MaybeGD(GameVersion game) => game is GD or GS or Any;
-        static bool MaybeSI(GameVersion game) => game is SI or GS or Any;
-        static bool MaybeC(GameVersion game) => game is C or Any;
+        static bool MaybeGD(GameVersion version) => version is GD or GS or Any;
+        static bool MaybeSI(GameVersion version) => version is SI or GS or Any;
+        static bool MaybeC (GameVersion version) => version is C or Any;
     }
 
     /// <inheritdoc cref="InferFrom(SAV1)"/>
@@ -247,7 +247,7 @@ public static class SaveLanguage
     {
         if (MaybeFR(hint)) {
             if (Contains(name, "fir")) return (English, FR);
-            if (Contains(name, "feu")) return (French, FR);
+            if (Contains(name, "feu") && !Contains(name, "feui")) return (French, FR); // ignore vert feuille
             if (Contains(name, "feuer")) return (German, FR);
             if (Contains(name, "fuoco")) return (Italian, FR);
             if (Contains(name, "fueg")) return (Spanish, FR);
@@ -309,11 +309,11 @@ public static class SaveLanguage
         }
         return default;
 
-        static bool MaybeFR(GameVersion game) => game is FR or FRLG or Any;
-        static bool MaybeLG(GameVersion game) => game is LG or FRLG or Any;
-        static bool MaybeR(GameVersion game) => game is R or RS or Any;
-        static bool MaybeS(GameVersion game) => game is S or RS or Any;
-        static bool MaybeE(GameVersion game) => game is E or RS or Any;
+        static bool MaybeFR(GameVersion version) => version is FR or FRLG or Any;
+        static bool MaybeLG(GameVersion version) => version is LG or FRLG or Any;
+        static bool MaybeR (GameVersion version) => version is R or RS or Any;
+        static bool MaybeS (GameVersion version) => version is S or RS or Any;
+        static bool MaybeE (GameVersion version) => version is E or RS or Any;
     }
 
     /// <summary>
@@ -322,9 +322,8 @@ public static class SaveLanguage
     private static SaveLanguageResult GetFallback(SAV1 sav)
     {
         bool jp = sav.Japanese;
-        bool yw = sav.Yellow;
         var lang = jp ? Japanese : OverrideLanguageGen1;
-        var ver = yw ? YW : OverrideVersionGen1;
+        var ver = sav.Version == YW ? YW : OverrideVersionGen1;
         return (lang, ver);
     }
 

@@ -16,9 +16,10 @@ public static class StringConverter1
     public const char Terminator = '\0';
     public const char TradeOT = '*';
 
-    public static bool GetIsJapanese(ReadOnlySpan<char> str) => AllJapanese(str);
-
-    private static bool AllJapanese(ReadOnlySpan<char> str)
+    /// <summary>
+    /// Quick check if the input string is entirely Japanese characters.
+    /// </summary>
+    public static bool GetIsJapanese(ReadOnlySpan<char> str)
     {
         foreach (var x in str)
         {
@@ -29,7 +30,7 @@ public static class StringConverter1
         static bool IsJapanese(char c) => c is >= '\u3000' and <= '\u30FC';
     }
 
-    public static bool GetIsEnglish(ReadOnlySpan<char> str) => !GetIsJapanese(str);
+    public static bool GetIsEnglish(ReadOnlySpan<char> str) => !GetIsJapanese(str) && !str.StartsWith(TradeOT);
     public static bool GetIsJapanese(ReadOnlySpan<byte> raw) => AllCharsInTable(raw, TableJP);
     public static bool GetIsEnglish(ReadOnlySpan<byte> raw) => AllCharsInTable(raw, TableEN);
 
@@ -92,6 +93,9 @@ public static class StringConverter1
     /// <returns>Decoded string.</returns>
     public static string GetString(ReadOnlySpan<byte> data, bool jp)
     {
+        if (!jp && StringConverter2KOR.IsHangul(data))
+            return StringConverter2KOR.GetString(data);
+
         Span<char> result = stackalloc char[data.Length];
         int length = LoadString(data, result, jp);
         return new string(result[..length]);
@@ -104,6 +108,9 @@ public static class StringConverter1
     /// <returns>Character count loaded.</returns>
     public static int LoadString(ReadOnlySpan<byte> data, Span<char> result, bool jp)
     {
+        if (!jp && StringConverter2KOR.IsHangul(data))
+            return StringConverter2KOR.LoadString(data, result);
+
         if (data.Length == 0)
             return 0;
         if (data[0] == TradeOTCode) // In-game Trade
@@ -137,6 +144,9 @@ public static class StringConverter1
     public static int SetString(Span<byte> destBuffer, ReadOnlySpan<char> value, int maxLength, bool jp,
         StringConverterOption option = StringConverterOption.Clear50)
     {
+        if (!jp && StringConverter2KOR.IsHangul(value))
+            return StringConverter2KOR.SetString(destBuffer, value, maxLength, option);
+
         if (option is StringConverterOption.ClearZero)
             destBuffer.Clear();
         else if (option is StringConverterOption.Clear50)
@@ -202,6 +212,7 @@ public static class StringConverter1
 
     #region Gen 1 Character Tables
 
+    // Share all to Gen2's tables.
     internal const char NUL = Terminator;
     internal const char TOT = TradeOT;
     internal const char LPK = '{'; // Pk
@@ -210,9 +221,9 @@ public static class StringConverter1
     internal const char LPO = '@'; // Po
     internal const char LKE = '#'; // Ke
     internal const char LEA = '%'; // é for Box/Mail
-    public const char DOT = '․'; // . for MR.MIME (U+2024, not U+002E)
+    internal const char DOT = '․'; // . for MR.MIME (U+2024, not U+002E)
     internal const char SPF = '　'; // Full-width space (U+3000)
-    public const char SPH = ' '; // Half-width space
+    internal const char SPH = ' '; // Half-width space
 
     public static ReadOnlySpan<char> TableEN =>
     [

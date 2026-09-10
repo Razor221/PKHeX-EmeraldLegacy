@@ -2,17 +2,15 @@ using System;
 
 namespace PKHeX.Core;
 
+/// <summary>
+/// Logic for <see cref="EntityContext.Gen4"/> Ruins of Alph Unown forms.
+/// </summary>
 public static class RuinsOfAlph4
 {
     /// <summary>
-    /// Checks if the requested <see cref="form"/> is valid for the given result.
+    /// Met location for the Ruins of Alph.
     /// </summary>
-    public static bool IsFormValid(PKM pk, byte form)
-    {
-        if (!MethodFinder.GetLCRNGMethod1Match(pk, out var seed))
-            return true; // invalid anyway, don't care.
-        return IsFormValid(seed, form);
-    }
+    public const ushort Location = 209;
 
     /// <summary>
     /// Checks if the requested <see cref="form"/> is valid for the given seed.
@@ -25,6 +23,14 @@ public static class RuinsOfAlph4
         // ABCD|E(Item)|F(Form) determination
         var f = LCRNG.Next6(seed);
         return IsFormValidFrame(f, form);
+    }
+
+    /// <inheritdoc cref="IsFormValid(uint,byte)"/>
+    public static bool IsFormValid(PKM pk, byte form)
+    {
+        if (!MethodFinder.GetLCRNGMethod1Match(pk, out var seed))
+            return true; // invalid anyway, don't care.
+        return IsFormValid(seed, form);
     }
 
     /// <summary>

@@ -31,9 +31,14 @@ public enum ProgramLanguage
     Deutsch,
 
     /// <summary>
-    /// Spanish
+    /// Spanish (España)
     /// </summary>
-    Español,
+    Español_España,
+
+    /// <summary>
+    /// Spanish (LATAM)
+    /// </summary>
+    Español_LATAM,
 
     /// <summary>
     /// Korean

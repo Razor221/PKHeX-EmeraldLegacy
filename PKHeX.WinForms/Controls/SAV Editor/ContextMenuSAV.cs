@@ -9,7 +9,12 @@ namespace PKHeX.WinForms.Controls;
 
 public partial class ContextMenuSAV : UserControl
 {
-    public ContextMenuSAV() => InitializeComponent();
+    public ContextMenuSAV()
+    {
+        InitializeComponent();
+        if (Application.IsDarkModeEnabled)
+            WinFormsUtil.InvertToolStripIcons(mnuVSD.Items);
+    }
 
     public SaveDataEditor<PictureBox> Editor { private get; set; } = null!;
     public required SlotChangeManager Manager { get; init; }
@@ -35,7 +40,7 @@ public partial class ContextMenuSAV : UserControl
     {
         var info = GetSenderInfo(sender);
         if (info.IsEmpty())
-        { System.Media.SystemSounds.Asterisk.Play(); return; }
+        { WinFormsUtil.Asterisk(); return; }
 
         Manager.Hover.Stop();
         var pk = Editor.Slots.Get(info.Slot);
@@ -48,6 +53,7 @@ public partial class ContextMenuSAV : UserControl
         if (!editor.EditsComplete)
             return;
         PKM pk = editor.PreparePKM();
+        var preModify = pk.Clone();
 
         var info = GetSenderInfo(sender);
         var sav = info.View.SAV;
@@ -64,6 +70,7 @@ public partial class ContextMenuSAV : UserControl
                 return;
         }
 
+        editor.NotifyWasExported(preModify);
         Manager.Hover.Stop();
         Editor.Slots.Set(info.Slot, pk);
         Manager.SE.UpdateUndoRedo();
@@ -73,7 +80,7 @@ public partial class ContextMenuSAV : UserControl
     {
         var info = GetSenderInfo(sender);
         if (info.IsEmpty())
-        { System.Media.SystemSounds.Asterisk.Play(); return; }
+        { WinFormsUtil.Asterisk(); return; }
 
         var sav = info.View.SAV;
         var pk = sav.BlankPKM;
@@ -123,7 +130,7 @@ public partial class ContextMenuSAV : UserControl
         bool canView = !info.IsEmpty() || Main.HaX;
         bool canSet = info.CanWriteTo();
         bool canDelete = canSet && canView;
-        bool canLegality = ModifierKeys == Keys.Control && canView && RequestEditorLegality != null;
+        bool canLegality = (ModifierKeys == Keys.Control || Main.Settings.Display.SlotLegalityAlwaysVisible) && canView && RequestEditorLegality is not null;
 
         ToggleItem(mnuView, canView);
         ToggleItem(mnuSet, canSet);
@@ -136,10 +143,10 @@ public partial class ContextMenuSAV : UserControl
 
     private static SlotViewInfo<PictureBox> GetSenderInfo(object sender)
     {
-        var pb = WinFormsUtil.GetUnderlyingControl<PictureBox>(sender);
-        ArgumentNullException.ThrowIfNull(pb);
-        var view = WinFormsUtil.FindFirstControlOfType<ISlotViewer<PictureBox>>(pb);
-        ArgumentNullException.ThrowIfNull(view);
+        if (!WinFormsUtil.TryGetUnderlying<PictureBox>(sender, out var pb))
+            ArgumentNullException.ThrowIfNull(pb);
+        if (!WinFormsUtil.TryFindFirstControlOfType<ISlotViewer<PictureBox>>(pb, out var view))
+            ArgumentNullException.ThrowIfNull(view);
         var loc = view.GetSlotData(pb);
         return new SlotViewInfo<PictureBox>(loc, view);
     }

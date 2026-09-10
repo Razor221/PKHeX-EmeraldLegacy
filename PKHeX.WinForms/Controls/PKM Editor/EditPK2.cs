@@ -18,7 +18,7 @@ public partial class PKMEditor
         LoadMisc1(pk2);
         LoadMisc2(pk2);
 
-        TID_Trainer.LoadIDValues(pk2, pk2.Format);
+        TID_Trainer.LoadTrainer(pk2, pk2.Format);
         TB_MetLevel.Text = c2.MetLevel.ToString();
         CB_MetLocation.SelectedValue = (int)c2.MetLocation;
         CB_MetTimeOfDay.SelectedIndex = c2.MetTimeOfDay;
@@ -45,7 +45,9 @@ public partial class PKMEditor
         if (la.Valid)
             return;
 
-        var lang = SpeciesName.GetSpeciesNameLanguage(sk2.Species, sk2.Nickname, 2);
+        Span<char> nickname = stackalloc char[sk2.MaxStringLengthNickname];
+        int len = sk2.LoadString(sk2.NicknameTrash, nickname);
+        var lang = SpeciesName.GetSpeciesNameLanguage(sk2.Species, nickname[..len], EntityContext.Gen2);
         if (lang >= 1 && (lang == 1 != sk2.Japanese)) // force match language
             sk2.SwapLanguage();
         else if (sk2.Japanese != (sav.Language == 1)) // force match save file

@@ -13,7 +13,7 @@ public enum Gem8Version
     /// <summary>
     /// Initial cartridge version shipped.
     /// </summary>
-    /// <remarks><see cref="SaveUtil.SIZE_G8BDSP"/></remarks>
+    /// <remarks><see cref="SaveUtil.SIZE_G8BDSP_0"/></remarks>
     V1_0 = 0x25, // 37
 
     /// <summary>
@@ -43,10 +43,10 @@ public static class Gem8VersionExtensions
     /// <param name="version">Stored version value in the save data.</param>
     public static string GetSuffixString(this Gem8Version version) => version switch
     {
-        V1_0 => "-1.0.0", // Launch Revision
-        V1_1 => "-1.1.0", // 1.1.0
-        V1_2 => "-1.2.0", // 1.2.0
-        V1_3 => "-1.3.0", // 1.3.0
+        V1_0 => "-1.0", // Launch Revision
+        V1_1 => "-1.1", // 1.1.0
+        V1_2 => "-1.2", // 1.2.0
+        V1_3 => "-1.3", // 1.3.0
         _ => throw new ArgumentOutOfRangeException(nameof(version)),
     };
 }

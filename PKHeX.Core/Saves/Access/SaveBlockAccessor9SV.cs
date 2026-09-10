@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 // ReSharper disable UnusedMember.Local
 #pragma warning disable IDE0051 // Remove unused private members
@@ -12,7 +11,7 @@ namespace PKHeX.Core;
 public sealed class SaveBlockAccessor9SV(SAV9SV sav) : SCBlockAccessor, ISaveBlock9Main
 {
     public override IReadOnlyList<SCBlock> BlockInfo { get; } = sav.AllBlocks;
-    public Box8 BoxInfo { get; } = new(sav, Block(sav, KBox));
+    public Box9 BoxInfo { get; } = new(sav, Block(sav, KBox));
     public Party9 PartyInfo { get; } = new(sav, Block(sav, KParty));
     public MyItem9 Items { get; } = new(sav, Block(sav, KItem));
     public MyStatus9 MyStatus { get; } = new(sav, Block(sav, KMyStatus));
@@ -45,14 +44,14 @@ public sealed class SaveBlockAccessor9SV(SAV9SV sav) : SCBlockAccessor, ISaveBlo
         public Raid9(SAV9SV sav)
         {
             var paldea = GetBlock(sav.AllBlocks, KTeraRaidPaldea);
-            Paldea = new RaidSpawnList9(sav, paldea, paldea.Data, RaidSpawnList9.RaidCountLegal_T0, true);
+            Paldea = new RaidSpawnList9(sav, paldea, paldea.Raw, RaidSpawnList9.RaidCountLegal_T0, true);
 
             if (TryGetBlock(sav.AllBlocks, KTeraRaidDLC, out var raidDLC))
             {
-                var buffer = raidDLC.Data;
+                var buffer = raidDLC.Raw;
                 const int size = 0xC80;
-                var memKita = buffer.AsMemory(0, size);
-                var memBlue = buffer.AsMemory(size, size);
+                var memKita = buffer[..size];
+                var memBlue = buffer.Slice(size, size);
                 Kitakami = new RaidSpawnList9(sav, raidDLC, memKita, RaidSpawnList9.RaidCountLegal_T1, false);
                 Blueberry = new RaidSpawnList9(sav, raidDLC, memBlue, RaidSpawnList9.RaidCountLegal_T2, false);
             }
@@ -114,7 +113,7 @@ public sealed class SaveBlockAccessor9SV(SAV9SV sav) : SCBlockAccessor, ISaveBlo
     private const uint KBlueberryQuestRecords = 0x7BF02DBE;
     private const uint KSandwiches = 0x29B4AED2; // [0xC][151] index, unlocked, times made
     private const uint KCurrentClothing = 0x64235B3D;
-    private const uint KCurrentAppearance = 0x812FC3E3;
+    private const uint KCurrentAppearance = 0x812FC3E3; // (conveniently named `PLAYER_SAVE_DATA`, same as PlayerData8b's official name!
     private const uint KCurrentRotomPhoneCase = 0x1433CED7;
     private const uint KRentalTeams = 0x19CB0339;
     private const uint KRentalTeamCodes = 0xB476F6D4;
@@ -147,6 +146,7 @@ public sealed class SaveBlockAccessor9SV(SAV9SV sav) : SCBlockAccessor, ISaveBlo
     private const uint KPlayerLastRoomMapName = 0x9F1ABF26; // PlayerSave_LastRoomMapName
     private const uint KPlayerLastGreenPosition = 0x5C6F8291; // PlayerSave_LastGreenPos
     private const uint KPlayerCurrentFieldID = 0xF17EB014; // PlayerSave_CurrentFieldId (0 = Paldea, 1 = Kitakami, 2 = Blueberry)
+    private const uint KPlayerCurrentLocationID = 0x19FC5B7B; // Current position's met location ID
 
     // Fashion
     public const uint KFashionUnlockedEyewear = 0xCBA20ED5; // 1000-1999

@@ -13,13 +13,9 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
     protected internal override string ShortSummary => $"{OT} ({Version}) - {Played.LastSavedTime}";
     public override string Extension => string.Empty;
 
-    public override IReadOnlyList<string> PKMExtensions => Array.FindAll(PKM.Extensions, f =>
-    {
-        int gen = f[^1] - 0x30;
-        return gen <= 7 && f[1] != 'b'; // ignore PB7
-    });
+    public override IReadOnlyList<string> PKMExtensions => EntityFileExtension.GetExtensionsAtOrBelow(7, "pb7");
 
-    protected SAV7(byte[] data, [ConstantExpected] int biOffset) : base(data, biOffset)
+    protected SAV7(Memory<byte> data, [ConstantExpected] int biOffset) : base(data, biOffset)
     {
     }
 
@@ -66,8 +62,8 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
     #endregion
 
     // Configuration
-    protected override int SIZE_STORED => PokeCrypto.SIZE_6STORED;
-    protected override int SIZE_PARTY => PokeCrypto.SIZE_6PARTY;
+    public override int SIZE_STORED => PokeCrypto.SIZE_6STORED;
+    public override int SIZE_PARTY => PokeCrypto.SIZE_6PARTY;
     public override PK7 BlankPKM => new();
     public override Type PKMType => typeof(PK7);
 
@@ -80,8 +76,8 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
 
     public override int MaxBallID => Legal.MaxBallID_7; // 26
     public override GameVersion MaxGameID => Legal.MaxGameID_7;
-    protected override PK7 GetPKM(byte[] data) => new(data);
-    protected override byte[] DecryptPKM(byte[] data) => PokeCrypto.DecryptArray6(data);
+    protected override PK7 GetPKM(Memory<byte> data) => new(data);
+    protected override void DecryptPKM(Span<byte> data) => PokeCrypto.Decrypt67(data);
 
     // Feature Overrides
 
@@ -91,17 +87,17 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
     protected void ClearMemeCrypto()
     {
         // The MemeCrypto block is always zero -- they could have hidden a secret inside it, but they didn't.
-        Data.AsSpan(AllBlocks[MemeCryptoBlock].Offset + 0x100, MemeCrypto.SaveFileSignatureLength).Clear();
+        Data.Slice(AllBlocks[MemeCryptoBlock].Offset + 0x100, MemeCrypto.SaveFileSignatureLength).Clear();
     }
 
-    protected override byte[] GetFinalData()
+    protected override Memory<byte> GetFinalData()
     {
         BoxLayout.SaveBattleTeams();
         SetChecksums();
 
         // Applying the MemeCrypto signature will invalidate the checksum for that block.
         // This logic is not set up to revert that block after returning, so just return a copy of our data.
-        var result = (byte[])Data.Clone();
+        var result = Data.ToArray();
         MemeCrypto.SignInPlace(result);
         return result;
     }
@@ -145,9 +141,6 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
     public int GetRecordMax(int recordID) => Records.GetRecordMax(recordID);
     public int GetRecordOffset(int recordID) => Records.GetRecordOffset(recordID);
 
-    // Inventory
-    public override IReadOnlyList<InventoryPouch> Inventory { get => Items.Inventory; set => Items.Inventory = value; }
-
     // Storage
     public override int GetPartyOffset(int slot) => Party + (SIZE_PARTY * slot);
     public override int GetBoxOffset(int box) => Box + (SIZE_STORED * box * 30);
@@ -164,14 +157,10 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
         PK7 pk7 = (PK7)pk;
         // Apply to this Save File
         pk7.UpdateHandler(this);
-
-        pk7.FormArgumentElapsed = pk7.FormArgumentMaximum = 0;
-        pk7.FormArgumentRemain = (byte)GetFormArgument(pk);
-
         pk.RefreshChecksum();
-        if (SetUpdateRecords != PKMImportSetting.Skip)
-            AddCountAcquired(pk);
     }
+
+    protected override void SetRecord(PKM pk) => AddCountAcquired(pk);
 
     private void AddCountAcquired(PKM pk)
     {
@@ -183,20 +172,6 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
             Records.AddRecord(004); // wild encounters
             Records.AddRecord(042); // balls used
         }
-    }
-
-    private static uint GetFormArgument(PKM pk)
-    {
-        if (pk.Form == 0)
-            return 0;
-        // Gen7 allows forms to be stored in the box with the current duration & form
-        // Just cap out the form duration anyway
-        return pk.Species switch
-        {
-            (int)Species.Furfrou => 5u, // Furfrou
-            (int)Species.Hoopa => 3u, // Hoopa
-            _ => 0u,
-        };
     }
 
     protected override void SetDex(PKM pk) => Zukan.SetDex(pk);
@@ -211,7 +186,7 @@ public abstract class SAV7 : SAV_BEEF, ITrainerStatRecord, ISaveBlock7Main, IReg
 
     public override StorageSlotSource GetBoxSlotFlags(int index)
     {
-        int team = Array.IndexOf(TeamSlots, index);
+        int team = TeamSlots.IndexOf(index);
         if (team < 0)
             return StorageSlotSource.None;
 

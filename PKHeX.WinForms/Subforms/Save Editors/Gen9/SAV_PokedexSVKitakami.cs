@@ -36,8 +36,9 @@ public partial class SAV_PokedexSVKitakami : Form
         CLB_FormViewed.Items.AddRange(empty);
 
         // Fill List
+        var source = GameInfo.FilteredSources;
         CB_Species.InitializeBinding();
-        var species = GameInfo.SpeciesDataSource.Where(z => SAV.Personal.IsSpeciesInGame((ushort)z.Value)).ToArray();
+        var species = source.Species;
         CB_Species.DataSource = new BindingSource(species, string.Empty);
 
         var list = species
@@ -56,7 +57,6 @@ public partial class SAV_PokedexSVKitakami : Form
 
         ListBoxToSpecies = list;
         LB_Species.SelectedIndex = 0;
-        CB_Species.KeyDown += WinFormsUtil.RemoveDropCB;
         Loading = false;
         CanSave = true;
         lastIndex = 0;
@@ -301,7 +301,7 @@ public partial class SAV_PokedexSVKitakami : Form
         bool shiny = ModifierKeys == Keys.Shift;
         var species = GetSpecies(lastIndex);
         Dex.SetDexEntryAll(species, shiny);
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         GetEntry(species);
     }
 
@@ -316,7 +316,7 @@ public partial class SAV_PokedexSVKitakami : Form
         var species = GetSpecies(lastIndex);
         SetEntry(species);
         Dex.SeenNone();
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         GetEntry(species);
     }
 
@@ -326,7 +326,7 @@ public partial class SAV_PokedexSVKitakami : Form
         SetEntry(species);
         bool shiny = ModifierKeys == Keys.Shift;
         Dex.SeenAll(shiny);
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         GetEntry(species);
     }
 
@@ -335,7 +335,7 @@ public partial class SAV_PokedexSVKitakami : Form
         var species = GetSpecies(lastIndex);
         SetEntry(species);
         Dex.CaughtNone();
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         GetEntry(species);
     }
 
@@ -345,7 +345,7 @@ public partial class SAV_PokedexSVKitakami : Form
         SetEntry(species);
         bool shiny = ModifierKeys == Keys.Shift;
         Dex.CaughtAll(shiny);
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         GetEntry(species);
     }
 
@@ -355,7 +355,7 @@ public partial class SAV_PokedexSVKitakami : Form
         SetEntry(species);
         bool shiny = ModifierKeys == Keys.Shift;
         Dex.CompleteDex(shiny);
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
         GetEntry(species);
     }
 }

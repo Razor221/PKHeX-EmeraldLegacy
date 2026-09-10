@@ -7,7 +7,7 @@ namespace PKHeX.Core;
 /// </summary>
 public abstract class BulkStorage : SaveFile
 {
-    protected BulkStorage(byte[] data, Type t, int start, int slotsPerBox = 30) : base(data)
+    protected BulkStorage(Memory<byte> data, Type t, int start, int slotsPerBox = 30) : base(data)
     {
         Box = start;
         SlotsPerBox = slotsPerBox;
@@ -19,7 +19,7 @@ public abstract class BulkStorage : SaveFile
 
     protected readonly int SlotsPerBox;
 
-    protected internal override string ShortSummary => $"{Checksums.CRC16Invert(Data.AsSpan(Box)):X4}";
+    protected internal override string ShortSummary => $"{Checksums.CRC16Invert(Data[Box..]):X4}";
     public override string Extension => ".bin";
     public sealed override bool ChecksumsValid => true;
     public sealed override string ChecksumInfo => "No Info.";
@@ -28,11 +28,8 @@ public abstract class BulkStorage : SaveFile
     public sealed override Type PKMType => blank.GetType();
     public sealed override PKM BlankPKM => blank.Clone();
 
-    protected override PKM GetPKM(byte[] data) => EntityFormat.GetFromBytes(data, prefer: Context) ?? blank;
-    protected override byte[] DecryptPKM(byte[] data) => GetPKM(data).Data;
-
-    protected override int SIZE_STORED => blank.SIZE_STORED;
-    protected override int SIZE_PARTY => blank.SIZE_PARTY;
+    public override int SIZE_STORED => blank.SIZE_STORED;
+    public override int SIZE_PARTY => blank.SIZE_PARTY;
     public sealed override int MaxEV => blank.MaxEV;
     public sealed override byte Generation => blank.Format;
     public sealed override EntityContext Context => blank.Context;

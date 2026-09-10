@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Iterates to find potentially matched encounters for <see cref="GameVersion.Gen5"/>.
+/// Iterates to find potentially matched encounters for <see cref="EntityContext.Gen5"/>.
 /// </summary>
 public record struct EncounterEnumerator5(PKM Entity, EvoCriteria[] Chain, GameVersion Version) : IEnumerator<MatchedEncounter<IEncounterable>>
 {
@@ -73,7 +73,7 @@ public record struct EncounterEnumerator5(PKM Entity, EvoCriteria[] Chain, GameV
                 if (Chain.Length == 0)
                     break;
 
-                if (Entity.MetLocation == Locations.LinkTrade5NPC)
+                if (Entity is { MetLocation: Locations.LinkTrade5NPC, IsEgg: false })
                     goto case YieldState.TradeStart;
                 if (!Entity.FatefulEncounter)
                     goto case YieldState.Bred;
@@ -100,7 +100,7 @@ public record struct EncounterEnumerator5(PKM Entity, EvoCriteria[] Chain, GameV
             case YieldState.BredSplit:
                 bool daycare = Entity.EggLocation == Locations.Daycare5;
                 State = daycare ? YieldState.End : YieldState.StartCaptures;
-                if (EncounterGenerator5.TryGetSplit((EncounterEgg)Current.Encounter, Chain, out egg))
+                if (EncounterGenerator5.TryGetSplit((EncounterEgg5)Current.Encounter, Chain, out egg))
                     return SetCurrent(egg);
                 if (daycare)
                     break; // no other encounters
@@ -250,7 +250,7 @@ public record struct EncounterEnumerator5(PKM Entity, EvoCriteria[] Chain, GameV
 
             case YieldState.Fallback:
                 State = YieldState.End;
-                if (Deferred != null)
+                if (Deferred is not null)
                     return SetCurrent(Deferred, Rating);
                 break;
         }

@@ -11,27 +11,32 @@ namespace PKHeX.Core;
 public static class PersonalTable
 {
     /// <summary>
-    /// Personal Table used in <see cref="GameVersion.SV"/>.
+    /// Personal Table used in <see cref="EntityContext.Gen9a"/>.
+    /// </summary>
+    public static readonly PersonalTable9ZA ZA = new(GetTable("za"));
+
+    /// <summary>
+    /// Personal Table used in <see cref="EntityContext.Gen9"/>.
     /// </summary>
     public static readonly PersonalTable9SV SV = new(GetTable("sv"));
 
     /// <summary>
-    /// Personal Table used in <see cref="GameVersion.PLA"/>.
+    /// Personal Table used in <see cref="EntityContext.Gen8a"/>.
     /// </summary>
     public static readonly PersonalTable8LA LA = new(GetTable("la"));
 
     /// <summary>
-    /// Personal Table used in <see cref="GameVersion.BDSP"/>.
+    /// Personal Table used in <see cref="EntityContext.Gen8b"/>.
     /// </summary>
     public static readonly PersonalTable8BDSP BDSP = new(GetTable("bdsp"));
 
     /// <summary>
-    /// Personal Table used in <see cref="GameVersion.SWSH"/>.
+    /// Personal Table used in <see cref="EntityContext.Gen8"/>.
     /// </summary>
     public static readonly PersonalTable8SWSH SWSH = new(GetTable("swsh"));
 
     /// <summary>
-    /// Personal Table used in <see cref="GameVersion.GG"/>.
+    /// Personal Table used in <see cref="EntityContext.Gen7b"/>.
     /// </summary>
     public static readonly PersonalTable7GG GG = new(GetTable("gg"));
 
@@ -130,7 +135,7 @@ public static class PersonalTable
 
     private static void PopulateGen3Tutors()
     {
-        // Update Gen3 data with Emerald's data, FR/LG is a subset of Emerald's compatibility.
+        // Enable Gen3 data with Emerald's data, FR/LG is a subset of Emerald's compatibility.
         var machine = BinLinkerAccessor.Get(Util.GetBinaryResource("hmtm_g3.pkl"), "g3"u8);
         var tutors = BinLinkerAccessor.Get(Util.GetBinaryResource("tutors_g3.pkl"), "g3"u8);
         E.LoadTables(machine, tutors);

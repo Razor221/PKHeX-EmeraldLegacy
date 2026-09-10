@@ -23,6 +23,7 @@ public sealed class MetDataSource(GameStrings s)
     private readonly List<ComboItem> MetGen8a = CreateGen8a(s);
     private readonly List<ComboItem> MetGen8b = CreateGen8b(s);
     private readonly List<ComboItem> MetGen9 = CreateGen9(s);
+    private readonly List<ComboItem> MetGen9a = CreateGen9a(s);
 
     private IReadOnlyList<ComboItem>? MetGen4Transfer;
     private IReadOnlyList<ComboItem>? MetGen5Transfer;
@@ -150,6 +151,7 @@ public sealed class MetDataSource(GameStrings s)
         locations.Add(new ComboItem(s.gamelist[(int)BD], LocationsHOME.SWBD));
         locations.Add(new ComboItem(s.gamelist[(int)SP], LocationsHOME.SHSP));
         locations.Add(new ComboItem(s.gamelist[(int)PLA], LocationsHOME.SWLA));
+        // No backwards from ZA+
 
         return locations;
     }
@@ -175,6 +177,7 @@ public sealed class MetDataSource(GameStrings s)
     private static List<ComboItem> CreateGen8b(GameStrings s)
     {
         // Manually add invalid (-1) location from SW/SH as ID 65535
+        // If this list is used outside BD/SP, be sure to remap Jubilife's 00000 to 00658.
         var locations = new List<ComboItem> { new(s.Gen8.Met0[0], Locations.Default8bNone) };
         Util.AddCBWithOffset(locations, s.Gen8b.Met6, 60000, Locations.Daycare5);
         Util.AddCBWithOffset(locations, s.Gen8b.Met3, 30000, Locations.LinkTrade6);
@@ -197,6 +200,18 @@ public sealed class MetDataSource(GameStrings s)
         return locations;
     }
 
+    private static List<ComboItem> CreateGen9a(GameStrings s)
+    {
+        var locations = Util.GetCBList(s.Gen9a.Met0, 0);
+        Util.AddCBWithOffset(locations, s.Gen9a.Met6, 60000, Locations.Daycare5);
+        Util.AddCBWithOffset(locations, s.Gen9a.Met3, 30000, Locations.LinkTrade6);
+        Util.AddCBWithOffset(locations, s.Gen9a.Met0, 00000, Locations9a.Met0);
+        Util.AddCBWithOffset(locations, s.Gen9a.Met3, 30000, Locations9a.Met3);
+        Util.AddCBWithOffset(locations, s.Gen9a.Met4, 40000, Locations9a.Met4);
+        Util.AddCBWithOffset(locations, s.Gen9a.Met6, 60000, Locations9a.Met6);
+        return locations;
+    }
+
     /// <summary>
     /// Fetches a Met Location list for a <see cref="version"/> that has been transferred away from and overwritten.
     /// </summary>
@@ -210,26 +225,56 @@ public sealed class MetDataSource(GameStrings s)
             return MetGen2;
 
         IReadOnlyList<ComboItem> result;
-        if (egg && version < W && context.Generation() >= 5)
+        if (egg && version < W && context is not (EntityContext.Gen3 or EntityContext.Gen4))
             result = MetGen4;
         else
             result = GetLocationListInternal(version, context);
 
         // Insert the BD/SP none location if the format requires it.
-        if (context is EntityContext.Gen8b && !BDSP.Contains(version))
+        if (BDSP.Contains(version))
         {
-            var bdsp = new ComboItem[result.Count + 1];
-            var none = bdsp[0] = result[0];
-            bdsp[1] = new ComboItem($"{none.Text} (BD/SP)", Locations.Default8bNone);
-            var dest = bdsp.AsSpan(2);
-            if (result is ComboItem[] arr)
-                arr.AsSpan(1).CopyTo(dest);
-            else if (result is List<ComboItem> list)
-                CollectionsMarshal.AsSpan(list)[1..].CopyTo(dest);
-            return bdsp;
+            if (context is not EntityContext.Gen8b)
+                return GetExternalBDSP(result);
+        }
+        else
+        {
+            if (context is EntityContext.Gen8b)
+                return GetInternalBDSP(result);
         }
 
         return result;
+    }
+
+    private static IReadOnlyList<ComboItem> GetInternalBDSP(IReadOnlyList<ComboItem> result)
+    {
+        // BD/SP context, insert the -1 as (None) location
+        var bdsp = new ComboItem[result.Count + 1];
+        var none = bdsp[0] = result[0];
+        bdsp[1] = new ComboItem($"{none.Text} (BD/SP)", Locations.Default8bNone);
+        var dest = bdsp.AsSpan(2);
+        if (result is ComboItem[] arr)
+            arr.AsSpan(1).CopyTo(dest);
+        else if (result is List<ComboItem> list)
+            CollectionsMarshal.AsSpan(list)[1..].CopyTo(dest);
+
+        return bdsp;
+    }
+
+    private IReadOnlyList<ComboItem> GetExternalBDSP(IReadOnlyList<ComboItem> result)
+    {
+        // Outside BD/SP context, slight adjustment for 0.
+        var bdsp = new ComboItem[result.Count];
+        if (result is ComboItem[] arr)
+            arr.CopyTo(bdsp);
+        else if (result is List<ComboItem> list)
+            list.CopyTo(bdsp);
+
+        var zeroJubilife = Array.FindIndex(bdsp, z => z.Value == 0);
+        // Swap Jubilife's 0 value to the sanitized placeholder.
+        bdsp[zeroJubilife] = bdsp[zeroJubilife] with { Value = Locations8b.TransferPlaceholder0 };
+        bdsp[0] = MetGen8[0]; // reset 0 to (None)
+
+        return bdsp;
     }
 
     private IReadOnlyList<ComboItem> GetLocationListInternal(GameVersion version, EntityContext context) => version switch
@@ -257,6 +302,7 @@ public sealed class MetDataSource(GameStrings s)
         BD or SP => Partition2(MetGen8b, IsMetLocation8BDSP),
         PLA      => Partition2(MetGen8a, IsMetLocation8LA),
         SL or VL => Partition2(MetGen9, IsMetLocation9SV),
+        ZA       => Partition2(MetGen9a, IsMetLocation9ZA),
         _ => GetLocationListModified(version, context),
     };
 
@@ -305,7 +351,7 @@ public sealed class MetDataSource(GameStrings s)
     private IReadOnlyList<ComboItem> GetLocationListModified(GameVersion version, EntityContext context) => version switch
     {
         <= CXD when context == EntityContext.Gen4 => MetGen4Transfer ??= CreateGen4Transfer(),
-        < X when context.Generation() >= 5 => MetGen5Transfer ??= CreateGen5Transfer(),
+        < X when context.Generation >= 5 => MetGen5Transfer ??= CreateGen5Transfer(),
         _ => [],
     };
 }

@@ -1,59 +1,103 @@
 using System;
-using System.Threading.Tasks;
+using System.IO;
+using System.Threading;
 using System.Windows.Forms;
 using PKHeX.Core;
 
 #if !DEBUG
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using System.IO;
-using System.Threading;
 #endif
 
 namespace PKHeX.WinForms;
 
 internal static class Program
 {
-    /// <summary>
-    /// The main entry point for the application.
-    /// </summary>
-    [STAThread]
-    private static void Main()
-    {
-#if !DEBUG
-        // Add the event handler for handling UI thread exceptions to the event.
-        Application.ThreadException += UIThreadException;
-
-        // Set the unhandled exception mode to force all Windows Forms errors to go through our handler.
-        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-
-        // Add the event handler for handling non-UI thread exceptions to the event.
-        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
-#endif
-        // Run the application
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-
-        var args = Environment.GetCommandLineArgs();
-        // if an arg is "dark", set the color mode to dark
-        if (args.Length > 1 && args[1] == "dark")
-#pragma warning disable WFO5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-            Application.SetColorMode(SystemColorMode.Dark);
-#pragma warning restore WFO5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-
-        var splash = new SplashScreen();
-        new Task(() => splash.ShowDialog()).Start();
-        new Task(() => EncounterEvent.RefreshMGDB(WinForms.Main.MGDatabasePath)).Start();
-        var main = new Main();
-        splash.BeginInvoke(splash.ForceClose);
-        Application.Run(main);
-    }
-
     // Pipelines build can sometimes tack on text to the version code. Strip it out.
     public static readonly Version CurrentVersion = Version.Parse(GetSaneVersionTag(Application.ProductVersion));
 
+    public static readonly string WorkingDirectory = Path.GetDirectoryName(Environment.ProcessPath) ?? "";
+    public const string ConfigFileName = "cfg.json";
+    public static string PathConfig => Path.Combine(WorkingDirectory, ConfigFileName);
+
+    /// <summary>
+    /// Global settings instance, loaded before any forms are created.
+    /// </summary>
+    public static PKHeXSettings Settings { get; }
+
+    public static bool HaX { get; private set; }
+    static Program()
+    {
+#if !DEBUG
+        Application.ThreadException += UIThreadException;
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+#endif
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Settings = PKHeXSettings.GetSettings(PathConfig);
+
+        if (Settings.Startup.DarkMode)
+            Application.SetColorMode(SystemColorMode.Dark);
+        if (Settings.Startup.HighDpiText)
+            Application.SetHighDpiMode(HighDpiMode.DpiUnawareGdiScaled);
+    }
+
+    [STAThread]
+    private static void Main()
+    {
+        // Load settings first
+        var settings = Settings;
+        settings.LocalResources.SetLocalPath(WorkingDirectory);
+        StartupUtil.ReloadSettings(settings);
+
+        SplashScreen? splash = null;
+        if (!settings.Startup.SkipSplashScreen)
+        {
+            // Show splash screen on a dedicated STA thread so it can pump its own message loop.
+            var splashThread = new Thread(() =>
+            {
+                splash = new SplashScreen();
+                Application.Run(splash);
+            })
+            { IsBackground = true };
+            splashThread.SetApartmentState(ApartmentState.STA);
+            splashThread.Start();
+        }
+
+        var args = Environment.GetCommandLineArgs();
+        // Prepare initial values for the main form.
+        var startup = StartupUtil.GetStartup(args, settings);
+        var init = StartupUtil.FormLoadInitialActions(args, settings, CurrentVersion);
+        HaX = init.HaX;
+        var main = new Main();
+
+        // Close splash when Main is ready to display, then perform startup animation.
+        main.Shown += async (_, _) =>
+        {
+            splash?.BeginInvoke(splash.ForceClose);
+            main.Activate();
+
+            // Follow-up: display popups if needed.
+            if (init.HaX)
+                main.WarnBehavior();
+            else if (init.ShowChangelog)
+                main.ShowAboutDialog(AboutPage.Changelog);
+            else if (init.BackupPrompt)
+                main.PromptBackup(settings.LocalResources.GetBackupPath());
+
+            await main.CheckForUpdates().ConfigureAwait(true);
+        };
+
+        // Setup complete.
+        if (Settings.Startup.PluginLoadEnable)
+            main.AttachPlugins();
+        main.LoadInitialFiles(startup);
+        Application.Run(main);
+    }
+
     private static ReadOnlySpan<char> GetSaneVersionTag(ReadOnlySpan<char> productVersion)
     {
-        // Take only 0-9 and '.', stop on first char not in that set.
         for (int i = 0; i < productVersion.Length; i++)
         {
             char c = productVersion[i];
@@ -69,7 +113,6 @@ internal static class Program
 #if !DEBUG
     private static void Error(string msg) => MessageBox.Show(msg, "PKHeX Error", MessageBoxButtons.OK, MessageBoxIcon.Stop);
 
-    // Handle the UI exceptions by showing a dialog box, and asking the user if they wish to abort execution.
     private static void UIThreadException(object sender, ThreadExceptionEventArgs t)
     {
         DialogResult result = DialogResult.Cancel;
@@ -84,7 +127,6 @@ internal static class Program
             HandleReportingException(t.Exception, reportingException);
         }
 
-        // Exits the program when the user clicks Abort.
         if (result == DialogResult.Abort)
             Application.Exit();
     }
@@ -96,13 +138,13 @@ internal static class Program
             if (IsPluginError<IPlugin>(e, out var pluginName))
                 return $"An error occurred in a PKHeX plugin. Please report this error to the plugin author/maintainer.\n{pluginName}";
         }
-        catch { }
+        catch
+        {
+            // If we fail to analyze the stack trace, just return the generic message. Don't risk another exception.
+        }
         return "An error occurred in PKHeX. Please report this error to the PKHeX author.";
     }
 
-    // Handle the UI exceptions by showing a dialog box, and asking the user if they wish to abort execution.
-    // NOTE: This exception cannot be kept from terminating the application - it can only
-    // log the event, and inform the user about it.
     private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         var ex = e.ExceptionObject as Exception;
@@ -116,7 +158,7 @@ internal static class Program
             {
                 Error("You have installed PKHeX incorrectly. Please ensure you have unzipped all files before running.");
             }
-            else if (ex != null)
+            else if (ex is not null)
             {
                 var msg = GetErrorMessage(ex);
                 ErrorWindow.ShowErrorDialog($"{msg}\nPKHeX must now close.", ex, false);
@@ -134,7 +176,6 @@ internal static class Program
 
     private static bool IsPluginError<T>(Exception exception, out string pluginName)
     {
-        // Check the stacktrace to see if the namespace is a type that derives from IPlugin
         pluginName = string.Empty;
         var stackTrace = new System.Diagnostics.StackTrace(exception);
         foreach (var frame in stackTrace.GetFrames())
@@ -157,7 +198,7 @@ internal static class Program
         }
         catch
         {
-            // We've failed to even save the error details to a file. There's nothing else we can do.
+            // Do nothing. If we can't log the error, there's not much else we can do, and we don't want to risk another exception.
         }
         if (reportingException is FileNotFoundException x && x.FileName?.StartsWith("PKHeX.Core") == true)
         {
@@ -174,35 +215,28 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// Attempt to log exceptions to a file when there's an error displaying exception details.
-    /// </summary>
-    /// <param name="originalException"></param>
-    /// <param name="errorHandlingException"></param>
     private static bool EmergencyErrorLog(Exception? originalException, Exception errorHandlingException)
     {
         try
         {
-            // Not using a string builder because something's very wrong, and we don't want to make things worse
             var message = (originalException?.ToString() ?? "null first exception") + Environment.NewLine + errorHandlingException;
             File.WriteAllText($"PKHeX_Error_Report {DateTime.Now:yyyyMMddHHmmss}.txt", message);
         }
         catch (Exception)
         {
-            // We've failed to save the error details twice now. There's nothing else we can do.
             return false;
         }
         return true;
     }
 
-    private static bool IsOldPkhexCorePresent(Exception? ex)
+    private static bool IsOldPkhexCorePresent([NotNullWhen(true)] Exception? ex)
     {
         return ex is MissingMethodException or TypeLoadException or TypeInitializationException
             && File.Exists("PKHeX.Core.dll")
             && AssemblyName.GetAssemblyName("PKHeX.Core.dll").Version < CurrentVersion;
     }
 
-    private static bool IsPkhexCoreMissing(Exception? ex)
+    private static bool IsPkhexCoreMissing([NotNullWhen(true)] Exception? ex)
     {
         return ex is FileNotFoundException { FileName: {} n } && n.Contains("PKHeX.Core");
     }

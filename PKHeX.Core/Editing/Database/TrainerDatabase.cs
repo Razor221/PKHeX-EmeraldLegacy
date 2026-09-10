@@ -1,14 +1,45 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace PKHeX.Core;
 
 /// <summary>
 /// Contains many <see cref="ITrainerInfo"/> instances to match against a <see cref="GameVersion"/>.
 /// </summary>
+/// <remarks>
+/// Not thread-safe. If multiple threads are accessing the database, use a concurrent collection or synchronize access to the database.
+/// </remarks>
 public sealed class TrainerDatabase
 {
     private readonly Dictionary<GameVersion, List<ITrainerInfo>> Database = [];
+
+    /// <summary>
+    /// Gets the number of unique versions in the database.
+    /// </summary>
+    public int CountVersions => Database.Count;
+
+    /// <summary>
+    /// Gets the number of trainers in the database.
+    /// </summary>
+    public int CountTrainers => Database.Sum(z => z.Value.Count);
+
+    /// <summary>
+    /// Checks if the database contains any trainers for the specified <see cref="version"/>.
+    /// </summary>
+    public bool HasVersion(GameVersion version) => Database.ContainsKey(version);
+
+    /// <summary>
+    /// Gets all trainers from the database for the specified saved <see cref="version"/>.
+    /// </summary>
+    /// <param name="version">Saved Version to fetch trainers for</param>
+    public ReadOnlySpan<ITrainerInfo> GetTrainers(GameVersion version)
+    {
+        if (Database.TryGetValue(version, out var list))
+            return CollectionsMarshal.AsSpan(list);
+        return default;
+    }
 
     /// <summary>
     /// Fetches an appropriate trainer based on the requested <see cref="version"/>.
@@ -25,17 +56,12 @@ public sealed class TrainerDatabase
             return GetTrainerFromGroup(version, language);
 
         if (Database.TryGetValue(version, out var list))
-            return GetRandomChoice(list);
+            return list[GetRandomIndex(list.Count)];
 
         return null;
     }
 
-    private static T GetRandomChoice<T>(IReadOnlyList<T> list)
-    {
-        if (list.Count == 1)
-            return list[0];
-        return list[Util.Rand.Next(list.Count)];
-    }
+    private static int GetRandomIndex(int count) => count == 1 ? 0 : Util.Rand.Next(count);
 
     /// <summary>
     /// Fetches an appropriate trainer based on the requested <see cref="version"/> group.
@@ -49,7 +75,7 @@ public sealed class TrainerDatabase
         if (possible.Count == 0)
             return null;
 
-        if (lang != null)
+        if (lang is not null)
         {
             possible = possible.Select(z =>
             {
@@ -57,22 +83,23 @@ public sealed class TrainerDatabase
                 return new KeyValuePair<GameVersion, List<ITrainerInfo>>(z.Key, filtered);
             }).Where(z => z.Value.Count != 0).ToList();
         }
-        return GetRandomTrainer(possible);
+        var span = CollectionsMarshal.AsSpan(possible);
+        return GetRandomTrainer(span);
     }
 
     /// <summary>
-    /// Fetches an appropriate trainer based on the requested <see cref="generation"/>.
+    /// Fetches an appropriate trainer based on the requested <see cref="context"/>.
     /// </summary>
-    /// <param name="generation">Generation the trainer should inhabit</param>
+    /// <param name="context">Generation the trainer should inhabit</param>
     /// <param name="lang">Language to request for</param>
     /// <returns>Null if no trainer found for this version.</returns>
-    public ITrainerInfo? GetTrainerFromGen(byte generation, LanguageID? lang = null)
+    public ITrainerInfo? GetTrainerFromContext(EntityContext context, LanguageID? lang = null)
     {
-        var possible = Database.Where(z => z.Key.GetGeneration() == generation).ToList();
+        var possible = Database.Where(z => z.Key.Context == context).ToList();
         if (possible.Count == 0)
             return null;
 
-        if (lang != null)
+        if (lang is not null)
         {
             possible = possible.Select(z =>
             {
@@ -80,15 +107,17 @@ public sealed class TrainerDatabase
                 return new KeyValuePair<GameVersion, List<ITrainerInfo>>(z.Key, filtered);
             }).Where(z => z.Value.Count != 0).ToList();
         }
-        return GetRandomTrainer(possible);
+        var span = CollectionsMarshal.AsSpan(possible);
+        return GetRandomTrainer(span);
     }
 
-    private static ITrainerInfo? GetRandomTrainer(IReadOnlyList<KeyValuePair<GameVersion, List<ITrainerInfo>>> possible)
+    private static ITrainerInfo? GetRandomTrainer(ReadOnlySpan<KeyValuePair<GameVersion, List<ITrainerInfo>>> possible)
     {
-        if (possible.Count == 0)
+        if (possible.Length == 0)
             return null;
-        var group = GetRandomChoice(possible);
-        return GetRandomChoice(group.Value);
+        var group = possible[GetRandomIndex(possible.Length)];
+        var span = group.Value;
+        return span[GetRandomIndex(span.Count)];
     }
 
     /// <summary>
@@ -125,19 +154,34 @@ public sealed class TrainerDatabase
 
     private static SimpleTrainerInfo GetTrainerReference(PKM pk)
     {
-        var result = new SimpleTrainerInfo(pk.Version)
+        var (cr, c, r) = GetRegion3DS(pk);
+        return GetTrainerReference(pk, cr, c, r);
+    }
+
+    private static SimpleTrainerInfo GetTrainerReference(PKM pk, byte cr, byte c, byte r) => new(pk.Version)
+    {
+        TID16 = pk.TID16,
+        SID16 = pk.SID16,
+        OT = pk.OriginalTrainerName,
+        Gender = pk.OriginalTrainerGender,
+        Language = pk.Language,
+        Generation = pk.Generation,
+        ConsoleRegion = cr,
+        Country = c,
+        Region = r,
+    };
+
+    private static (byte ConsoleRegion, byte Country, byte Region) GetRegion3DS(PKM pk)
+    {
+        if (pk is IRegionOriginReadOnly x)
+            return (x.ConsoleRegion, x.Country, x.Region);
+        if (pk.Version.IsGen6() || pk.Version.IsGen7())
         {
-            TID16 = pk.TID16, SID16 = pk.SID16, OT = pk.OriginalTrainerName, Gender = pk.OriginalTrainerGender,
-            Language = pk.Language,
-            Generation = pk.Generation,
-        };
-
-        if (pk is IRegionOrigin r)
-            r.CopyRegionOrigin(result);
-        else
-            result.SetDefaultRegionOrigins(result.Language);
-
-        return result;
+            if (pk.Language == (int)LanguageID.Japanese)
+                return (0, 1, 0);
+            return (1, 7, 49);
+        }
+        return default;
     }
 
     /// <summary>

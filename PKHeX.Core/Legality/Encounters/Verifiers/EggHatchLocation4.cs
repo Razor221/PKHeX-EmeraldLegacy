@@ -4,7 +4,7 @@ using static PKHeX.Core.GameVersion;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Hatch Location validity for <see cref="GameVersion.Gen4"/>.
+/// Hatch Location validity for <see cref="EntityContext.Gen4"/>.
 /// </summary>
 public static class EggHatchLocation4
 {
@@ -16,7 +16,7 @@ public static class EggHatchLocation4
     /// <summary>
     /// Returns true if the hatch location is valid for the specified Generation 4 game.
     /// </summary>
-    public static bool IsValidMet4(ushort location, GameVersion game) => game switch
+    public static bool IsValidMet4(ushort location, GameVersion version) => version switch
     {
         D or P => IsValidMet4DP(location),
         Pt => IsValidMet4Pt(location),
@@ -66,7 +66,7 @@ public static class EggHatchLocation4
         3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
         3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
         3, 3, 6, 6, 6, 6, 6, 2, 6, 2,
-        2, 2, 2, 2, 2, 2, 4, 4, 4, 4,
+        2, 6, 2, 2, 2, 2, 4, 4, 4, 4,
         4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
         4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
         4, 4, 4, 4, 4, 4, 4, 4, 4, 4,

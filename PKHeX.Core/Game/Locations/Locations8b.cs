@@ -3,10 +3,39 @@ using System;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Locations for <see cref="GameVersion.BDSP"/>.
+/// Locations for <see cref="EntityContext.Gen8b"/>.
 /// </summary>
 public static class Locations8b
 {
+    /// <summary>
+    /// HOME transfer logic maps `0` to `658` to allow the <see cref="Locations.Default8bNone"/> location to be `0` instead.
+    /// </summary>
+    public const ushort TransferPlaceholder0 = 658;
+
+    /// <summary>
+    /// Converts a location from BD/SP format to join the rest of the mainline games. Zero is now (None).
+    /// </summary>
+    /// <param name="loc">Location ID in BD/SP format.</param>
+    /// <returns>Sanitized mainline location ID value.</returns>
+    public static ushort GetLocationMainline(ushort loc) => loc switch
+    {
+        0 => TransferPlaceholder0,
+        Locations.Default8bNone => 0,
+        _ => loc,
+    };
+
+    /// <summary>
+    /// Converts a location from mainline format to BD/SP format. Zero is now <see cref="Locations.Default8bNone"/>.
+    /// </summary>
+    /// <param name="loc">Location ID in mainline format.</param>
+    /// <returns>Sanitized BD/SP location ID value.</returns>
+    public static ushort GetLocationLocal(ushort loc) => loc switch
+    {
+        0 => Locations.Default8bNone,
+        TransferPlaceholder0 => 0,
+        _ => loc,
+    };
+
     /// <summary>
     /// Checks if the location is a Grand Underground location.
     /// </summary>
@@ -111,14 +140,15 @@ public static class Locations8b
     /// </summary>
     public static ReadOnlySpan<ushort> Met4 =>
     [
-               40001, 40002, 40003, 40005, 40006, 40007, 40008, 40009,
+        40001, 40002, 40003, 40005, 40006, 40007, 40008, 40009,
         40010, 40011, 40012, 40013, 40014, 40016, 40017, 40018, 40019,
         40020, 40021, 40022, 40024, 40025, 40026, 40027, 40028, 40029,
         40030, 40032, 40033, 40034, 40035, 40036, 40037, 40038, 40039,
         40040, 40041, 40042, 40043, 40044, 40045, 40047, 40048, 40049,
         40050, 40051, 40052, 40053, 40055, 40056, 40057, 40058, 40059,
         40060, 40061, 40063, 40064, 40065, 40066, 40067, 40068, 40069,
-        40070, 40071, 40072, 40074, 40075, 40076, 40077,
+        40070, 40071, 40072, 40074, 40075, 40076, 40077, 40078, 40079,
+        40080, 40081, 40082, 40083, 40084, 40085, 40086,
     ];
 
     /// <summary>

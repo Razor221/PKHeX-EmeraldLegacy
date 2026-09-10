@@ -7,10 +7,14 @@ using static PKHeX.Core.EntityContext;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Retrieves localized form names for indicating <see cref="PKM.Form"/> values.
+/// Retrieves localized form names for indicating <see cref="ISpeciesForm.Form"/> values.
 /// </summary>
 public static class FormConverter
 {
+    /// <inheritdoc cref="GetFormList(ushort, IReadOnlyList{string}, IReadOnlyList{string}, IReadOnlyList{string}, EntityContext)"/>
+    public static string[] GetFormList(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
+        => GetFormList(species, types, forms, GameInfo.GenderSymbolUnicode, context);
+
     /// <summary>
     /// Gets a list of forms that the species can have.
     /// </summary>
@@ -22,10 +26,8 @@ public static class FormConverter
     /// <returns>A list of strings corresponding to the forms that a Pokémon can have.</returns>
     public static string[] GetFormList(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders, EntityContext context)
     {
-        byte generation = context.Generation();
-
         // Mega List
-        if (context.IsMegaGeneration() && IsFormListSingleMega(species))
+        if (context.IsMegaContext && IsFormListSingleMega(species, context))
             return GetMegaSingle(types, forms);
 
         if (context is Gen7 && FormInfo.HasTotemForm(species))
@@ -35,38 +37,45 @@ public static class FormConverter
         {
             <= Legal.MaxSpeciesID_1 => GetFormsGen1(species, types, forms, context),
             <= Legal.MaxSpeciesID_2 => GetFormsGen2(species, types, forms, context),
-            <= Legal.MaxSpeciesID_3 => GetFormsGen3(species, types, forms, generation),
-            <= Legal.MaxSpeciesID_4 => GetFormsGen4(species, types, forms, generation),
-            <= Legal.MaxSpeciesID_5 => GetFormsGen5(species, types, forms, generation),
-            <= Legal.MaxSpeciesID_6 => GetFormsGen6(species, types, forms, genders, generation),
-            <= Legal.MaxSpeciesID_7_USUM => GetFormsGen7(species, types, forms, generation),
-            <= Legal.MaxSpeciesID_8a => GetFormsGen8(species, generation, types, forms, genders),
-            _ => GetFormsGen9(species, generation, types, forms, genders),
+            <= Legal.MaxSpeciesID_3 => GetFormsGen3(species, types, forms, context),
+            <= Legal.MaxSpeciesID_4 => GetFormsGen4(species, types, forms, context),
+            <= Legal.MaxSpeciesID_5 => GetFormsGen5(species, types, forms, context),
+            <= Legal.MaxSpeciesID_6 => GetFormsGen6(species, types, forms, genders, context),
+            <= Legal.MaxSpeciesID_7_USUM => GetFormsGen7(species, types, forms, context),
+            <= Legal.MaxSpeciesID_8a => GetFormsGen8(species, context, types, forms, genders),
+            _ => GetFormsGen9(species, context, types, forms, genders),
         };
     }
 
-    private static bool IsMegaGeneration(this EntityContext context) => context is Gen6 or Gen7 or Gen7b;
-
+    /// <summary>
+    /// Used to indicate that the form list is a single form, so no name is specified.
+    /// </summary>
     private static readonly string[] EMPTY = [string.Empty];
+
+    /// <summary>
+    /// Lets Go, Pikachu! &amp; Eevee! Starter form name.
+    /// </summary>
+    /// <remarks>
+    /// Different from the "Partner Cap" form.
+    /// </remarks>
     private const string Starter = nameof(Starter);
 
     private static string[] GetFormsGen1(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
     {
-        byte generation = context.Generation();
         return (Species)species switch
         {
-            Charizard or Mewtwo when context.IsMegaGeneration() => GetMegaXY(types, forms),
+            Charizard or Mewtwo when context.IsMegaContext => GetMegaXY(types, forms),
             Eevee when context is Gen7b =>
             [
                 types[0], // Normal
                 Starter,
             ],
             Pikachu => GetFormsPikachu(context, types, forms),
-            Slowbro when generation >= 8 => GetFormsGalarSlowbro(types, forms),
+            Slowbro when context.Generation >= 8 => GetFormsGalarSlowbro(types, forms),
 
-            Weezing or Ponyta or Rapidash or Slowpoke or MrMime or Farfetchd or Articuno or Zapdos or Moltres when generation >= 8 => GetFormsGalar(types, forms),
-            Growlithe or Arcanine or Voltorb or Electrode when generation >= 8 => GetFormsHisui(species, generation, types, forms),
-            Tauros when generation >= 9 => GetFormsPaldea(species, types, forms),
+            Weezing or Ponyta or Rapidash or Slowpoke or MrMime or Farfetchd or Articuno or Zapdos or Moltres when context.Generation >= 8 => GetFormsGalar(types, forms),
+            Growlithe or Arcanine or Voltorb or Electrode when context.Generation >= 8 => GetFormsHisui(species, context, types, forms),
+            Tauros when context.Generation >= 9 => GetFormsPaldea(species, types, forms),
 
             _ => GetFormsAlolan(context, types, forms, species),
         };
@@ -74,30 +83,30 @@ public static class FormConverter
 
     private static string[] GetFormsGen2(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
     {
-        byte generation = context.Generation();
         return (Species)species switch
         {
             Pichu when context is Gen4 => GetFormsPichu(types, forms),
-            Slowking or Corsola when generation >= 8 => GetFormsGalar(types, forms),
-            Typhlosion or Qwilfish or Sneasel when generation >= 8 => GetFormsHisui(species, generation, types, forms),
-            Wooper when generation >= 9 => GetFormsPaldea(species, types, forms),
-            Unown => GetFormsUnown(generation),
+            Slowking or Corsola when context.Generation >= 8 => GetFormsGalar(types, forms),
+            Typhlosion or Qwilfish or Sneasel when context.Generation >= 8 => GetFormsHisui(species, context, types, forms),
+            Wooper when context.Generation >= 9 => GetFormsPaldea(species, types, forms),
+            Unown => GetFormsUnown(context),
             _ => EMPTY,
         };
     }
 
-    private static string[] GetFormsGen3(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, byte generation)
+    private static string[] GetFormsGen3(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
     {
         return (Species)species switch
         {
-            Zigzagoon or Linoone when generation >= 8 => GetFormsGalar(types, forms),
+            Zigzagoon or Linoone when context.Generation >= 8 => GetFormsGalar(types, forms),
+            Absol when context.IsMegaContext => GetMegaZ(types, forms), // Single mega would return earlier
             Castform => [
                 types[0], // Normal
                 forms[889], // Sunny
                 forms[890], // Rainy
                 forms[891], // Snowy
             ],
-            Kyogre or Groudon when generation < 8 => [
+            Kyogre or Groudon when context.IsMegaContext => [
                 types[0], // Normal
                 forms[899], // Primal
             ],
@@ -111,7 +120,7 @@ public static class FormConverter
         };
     }
 
-    private static string[] GetFormsGen4(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, byte generation)
+    private static string[] GetFormsGen4(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
     {
         return (Species)species switch
         {
@@ -128,6 +137,7 @@ public static class FormConverter
                 forms[(int)Shellos], // West
                 forms[911], // East
             ],
+            Garchomp or Lucario when context.IsMegaContext => GetMegaZ(types, forms), // Single mega would return earlier
             Rotom => [
                 types[0], // Normal
                 forms[917], // Heat
@@ -136,7 +146,7 @@ public static class FormConverter
                 forms[920], // Fan
                 forms[921], // Mow
             ],
-            Dialga or Palkia when generation >= 8 => [
+            Dialga or Palkia when context.Generation >= 8 => [
                 types[0], // Normal
                 forms[922], // Origin
             ],
@@ -148,17 +158,17 @@ public static class FormConverter
                 forms[(int)Shaymin], // Land
                 forms[923], // Sky
             ],
-            Arceus => GetFormsArceus(species, generation, types, forms),
+            Arceus => GetFormsArceus(context, types, forms),
             _ => EMPTY,
         };
     }
 
-    private static string[] GetFormsGen5(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, byte generation)
+    private static string[] GetFormsGen5(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
     {
         return (Species)species switch
         {
-            Samurott or Lilligant or Zorua or Zoroark or Braviary when generation >= 8 => GetFormsHisui(species, generation, types, forms),
-            Basculin when generation >= 8 => [
+            Samurott or Lilligant or Zorua or Zoroark or Braviary when context.Generation >= 8 => GetFormsHisui(species, context, types, forms),
+            Basculin when context.Generation >= 8 => [
                 forms[(int)Basculin], // Red
                 forms[942], // Blue
                 forms[989], // White
@@ -167,8 +177,8 @@ public static class FormConverter
                 forms[(int)Basculin], // Red
                 forms[942], // Blue
             ],
-            Darumaka or Stunfisk or Yamask when generation >= 8 => GetFormsGalar(types, forms),
-            Darmanitan when generation >= 8 => [
+            Darumaka or Stunfisk or Yamask when context.Generation >= 8 => GetFormsGalar(types, forms),
+            Darmanitan when context.Generation >= 8 => [
                 forms[(int)Darmanitan], // Standard
                 forms[943], // Zen
                 forms[Galarian], // Standard
@@ -212,19 +222,11 @@ public static class FormConverter
         };
     }
 
-    private static string[] GetFormsGen6(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders, byte generation)
+    private static string[] GetFormsGen6(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders, EntityContext context)
     {
         return (Species)species switch
         {
-            Greninja when generation < 9 => [
-                types[0], // Normal
-                forms[962], // Ash
-                forms[1012], // "Bonded" - Active
-            ],
-            Greninja => [
-                types[0], // Normal
-                forms[962], // Ash
-            ],
+            Greninja => GetFormsGreninja(types, forms, new string[!context.IsMegaContext ? 2 : context.Generation >= 9 ? 4 : 3]),
             Scatterbug or Spewpa or Vivillon => [
                 forms[(int)Vivillon], // Icy Snow
                 forms[963], // Polar
@@ -247,21 +249,14 @@ public static class FormConverter
                 forms[980], // Fancy
                 forms[981], // Poké Ball
             ],
-            Floette when generation < 9 => [
-                forms[(int)Floette], // Red
-                forms[986], // Yellow
-                forms[987], // Orange
-                forms[988], // Blue
-                forms[989], // White
-                forms[990], // Eternal
-            ],
-            Flabébé or Floette or Florges => [
+            Flabébé or Florges => [
                 forms[(int)Flabébé], // Red
                 forms[986], // Yellow
                 forms[987], // Orange
                 forms[988], // Blue
                 forms[989], // White
             ],
+            Floette => GetFormsFloette(forms, new string[!context.IsMegaContext ? 5 : context.Generation >= 9 ? 7 : 6]),
             Furfrou => [
                 forms[(int)Furfrou], // Natural
                 forms[995], // Heart
@@ -274,6 +269,12 @@ public static class FormConverter
                 forms[1002], // Kabuki
                 forms[1003], // Pharaoh
             ],
+            Meowstic when context is { IsMegaContext: true, Generation: >= 9 } => [
+                genders[000], // Male
+                genders[001], // Female
+                $"{genders[000]}-{forms[Mega]}", // Mega (Male)
+                $"{genders[001]}-{forms[Mega]}", // Mega (Female)
+            ],
             Meowstic => [
                 genders[000], // Male
                 genders[001], // Female
@@ -282,37 +283,37 @@ public static class FormConverter
                 forms[(int)Aegislash], // Shield
                 forms[1005], // Blade
             ],
-            Sliggoo or Goodra or Avalugg when generation >= 8 => GetFormsHisui(species, generation, types, forms),
+            Sliggoo or Goodra or Avalugg when context.Generation >= 8 => GetFormsHisui(species, context, types, forms),
+            Pumpkaboo or Gourgeist when context.Generation >= 9 => [
+                forms[MediumVariety],
+                forms[SmallVariety],
+                forms[LargeVariety],
+                forms[JumboVariety],
+            ],
             Pumpkaboo or Gourgeist => [
                 forms[(int)Pumpkaboo], // Average
                 forms[1006], // Small
                 forms[1007], // Large
                 forms[1008], // Super
             ],
-            Xerneas => [
+            Xerneas when context.Generation < 9 => [
                 forms[(int)Xerneas], // Neutral
                 forms[1012], // Active
             ],
+            Zygarde => GetFormsZygarde(forms, new string[context is { IsMegaContext: true, Generation: >= 9 } ? 6 : 5]),
             Hoopa => [
                 forms[(int)Hoopa], // Confined
                 forms[1018], // Unbound
-            ],
-            Zygarde => [
-                forms[(int)Zygarde], // 50% (Aura Break)
-                forms[1013], // 10% (Aura Break)
-                forms[1014] + "-C", // 10% Cell (Power Construct)
-                forms[1015] + "-C", // 50% Cell (Power Construct)
-                forms[1016], // 100% Cell (Power Construct)
             ],
             _ => EMPTY,
         };
     }
 
-    private static string[] GetFormsGen7(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, byte generation)
+    private static string[] GetFormsGen7(ushort species, IReadOnlyList<string> types, IReadOnlyList<string> forms, EntityContext context)
     {
         return (Species)species switch
         {
-            Decidueye when generation >= 8 => GetFormsHisui(species, generation, types, forms),
+            Decidueye when context.Generation >= 8 => GetFormsHisui(species, context, types, forms),
             Oricorio => [
                 forms[(int)Oricorio], // "RED" - Baile
                 forms[1021], // "YLW" - Pom-Pom
@@ -332,7 +333,7 @@ public static class FormConverter
                 forms[(int)Wishiwashi],
                 forms[1025], // School
             ],
-            Silvally => GetFormsArceus(species, 7, types, forms),
+            Silvally => GetFormsArceus(Gen7, types, forms),
             Minior => [
                 forms[(int)Minior], // "R-Meteor", // Meteor Red
                 forms[1045], // "O-Meteor", // Meteor Orange
@@ -353,7 +354,7 @@ public static class FormConverter
                 forms[(int)Mimikyu], // Disguised
                 forms[1058], // Busted
             ],
-            Necrozma when generation == 7 => [
+            Necrozma when context is Gen7 => [
                 types[0], // Normal
                 forms[1065], // Dusk Mane
                 forms[1066], // Dawn Wings
@@ -364,6 +365,12 @@ public static class FormConverter
                 forms[1065], // Dusk Mane
                 forms[1066], // Dawn Wings
             ],
+            Magearna when context is { IsMegaContext: true, Generation: >= 9 } => [
+                types[0],
+                forms[1062], // Original Color
+                $"{types[0]}-{forms[Mega]}", // Mega
+                $"{forms[1062]}-{forms[Mega]}", // Mega (Original Color)
+            ],
             Magearna => [
                 types[0],
                 forms[1062], // Original
@@ -372,7 +379,7 @@ public static class FormConverter
         };
     }
 
-    private static string[] GetFormsGen8(ushort species, byte generation, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders)
+    private static string[] GetFormsGen8(ushort species, EntityContext context, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders)
     {
         return (Species)species switch
         {
@@ -384,10 +391,6 @@ public static class FormConverter
             Toxtricity => [
                 forms[(int)Toxtricity], // Amped
                 forms[LowKey],
-            ],
-            Indeedee or Basculegion => [
-                genders[000], // Male
-                genders[001], // Female
             ],
             Sinistea or Polteageist => [
                 forms[Phony],
@@ -404,19 +407,23 @@ public static class FormConverter
                 forms[CaramelSwirl],
                 forms[RainbowSwirl],
             ],
-            Morpeko => [
-                forms[FullBellyMode],
-                forms[HangryMode],
-            ],
             Eiscue => [
                 forms[IceFace],
                 forms[NoiceFace],
+            ],
+            Indeedee or Basculegion => [
+                genders[000], // Male
+                genders[001], // Female
+            ],
+            Morpeko => [
+                forms[FullBellyMode],
+                forms[HangryMode],
             ],
             Zacian or Zamazenta => [
                 forms[HeroOfManyBattles],
                 forms[Crowned],
             ],
-            Eternatus when generation == 8 => [
+            Eternatus when context.Generation == 8 => [
                 types[0], // Normal
                 forms[Eternamax],
             ],
@@ -430,14 +437,14 @@ public static class FormConverter
             ],
             Calyrex => [
                 types[0], // Normal
-                forms[CalyIce],
-                forms[CalyGhost],
+                forms[IceRider],
+                forms[ShadowRider],
             ],
-            Kleavor when generation == 8 => [
+            Kleavor when context.Generation == 8 => [
                 types[0],
                 forms[Lord],
             ],
-            Ursaluna when generation >= 9 => [
+            Ursaluna when context.Generation >= 9 => [
                 types[0],
                 forms[Bloodmoon],
             ],
@@ -449,7 +456,7 @@ public static class FormConverter
         };
     }
 
-    private static string[] GetFormsGen9(ushort species, byte generation, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders)
+    private static string[] GetFormsGen9(ushort species, EntityContext context, IReadOnlyList<string> types, IReadOnlyList<string> forms, IReadOnlyList<string> genders)
     {
         return (Species)species switch
         {
@@ -457,28 +464,36 @@ public static class FormConverter
                 genders[000], // Male
                 genders[001], // Female
             ],
-            Dudunsparce => [
-                forms[TwoSegment],
-                forms[ThreeSegment],
-            ],
-            Palafin => [
-                forms[Zero],
-                forms[HeroPalafin],
-            ],
             Maushold => [
                 forms[FamilyOfThree],
                 forms[FamilyOfFour],
-            ],
-            Tatsugiri => [
-                forms[Curly],
-                forms[Droopy],
-                forms[Stretchy],
             ],
             Squawkabilly => [
                 forms[Green],
                 forms[988], // Blue
                 forms[986], // Yellow
                 forms[989], // White
+            ],
+            Palafin => [
+                forms[Zero],
+                forms[HeroPalafin],
+            ],
+            Tatsugiri when context.IsMegaContext => [
+                forms[Curly],
+                forms[Droopy],
+                forms[Stretchy],
+                $"{forms[Curly]}-{forms[Mega]}",
+                $"{forms[Droopy]}-{forms[Mega]}",
+                $"{forms[Stretchy]}-{forms[Mega]}",
+            ],
+            Tatsugiri => [
+                forms[Curly],
+                forms[Droopy],
+                forms[Stretchy],
+            ],
+            Dudunsparce => [
+                forms[TwoSegment],
+                forms[ThreeSegment],
             ],
             Gimmighoul => [
                 forms[Chest],
@@ -498,6 +513,14 @@ public static class FormConverter
                 forms[Aquatic],
                 forms[Glide],
             ],
+            Poltchageist => [
+                forms[Counterfeit],
+                forms[Artisan],
+            ],
+            Sinistcha => [
+                forms[Unremarkable],
+                forms[Masterpiece],
+            ],
             Ogerpon => [
                 forms[MaskTeal],
                 forms[MaskWellspring],
@@ -507,14 +530,6 @@ public static class FormConverter
                 $"*{forms[MaskWellspring]}",
                 $"*{forms[MaskHearthflame]}",
                 $"*{forms[MaskCornerstone]}",
-            ],
-            Poltchageist => [
-                forms[Counterfeit],
-                forms[Artisan],
-            ],
-            Sinistcha => [
-                forms[Unremarkable],
-                forms[Masterpiece],
             ],
             Terapagos => [
                 types[0], // Normal
@@ -527,7 +542,7 @@ public static class FormConverter
 
     private static string[] GetFormsAlolan(EntityContext context, IReadOnlyList<string> types, IReadOnlyList<string> forms, ushort species)
     {
-        byte generation = context.Generation();
+        byte generation = context.Generation;
         if (generation < 7)
             return EMPTY;
 
@@ -535,8 +550,15 @@ public static class FormConverter
         {
             Meowth when generation >= 8 => [
                 types[0],
-                forms[810], // Alolan
+                forms[Alolan], // Alolan
                 forms[Galarian], // Galarian
+            ],
+
+            Raichu when generation >= 9 && context.IsMegaContext => [
+                types[0],
+                forms[Alolan], // Alolan
+                forms[MegaX], // Mega X
+                forms[MegaY], // Mega Y
             ],
 
             // Only reached when Gen8+, as Totem logic picks up Gen7 earlier.
@@ -551,7 +573,7 @@ public static class FormConverter
                 or Exeggutor
                 or Marowak => [
                     types[0],
-                    forms[810], // Alolan
+                    forms[Alolan], // Alolan
                 ],
             _ => EMPTY,
         };
@@ -559,10 +581,10 @@ public static class FormConverter
 
     private static string[] GetFormsPikachu(EntityContext context, IReadOnlyList<string> types, IReadOnlyList<string> forms)
     {
-        byte generation = context.Generation();
-        return generation switch
+        return context switch
         {
-            6 => [
+            < Gen6 => EMPTY,
+            Gen6 => [
                 types[0], // Normal
                 forms[729], // Rockstar
                 forms[730], // Belle
@@ -571,7 +593,7 @@ public static class FormConverter
                 forms[733], // Libre
                 forms[734], // Cosplay
             ],
-            7 when context is Gen7b => [
+            Gen7b => [
                 types[0], // Normal
                 forms[813], // Original
                 forms[814], // Hoenn
@@ -582,7 +604,7 @@ public static class FormConverter
                 forms[1063], // Partner
                 Starter,
             ],
-            7 => [
+            Gen7 => [
                 types[0], // Normal
                 forms[813], // Original
                 forms[814], // Hoenn
@@ -592,7 +614,7 @@ public static class FormConverter
                 forms[818], // Alola
                 forms[1063], // Partner
             ],
-            8 or 9 => [
+            _ => [
                 types[0], // Normal
                 forms[813], // Original
                 forms[814], // Hoenn
@@ -604,7 +626,6 @@ public static class FormConverter
                 Starter,
                 forms[1085], // World
             ],
-            _ => EMPTY,
         };
     }
 
@@ -617,11 +638,11 @@ public static class FormConverter
         ];
     }
 
-    private static string[] GetFormsArceus(ushort species, byte generation, IReadOnlyList<string> types, IReadOnlyList<string> forms)
+    private static string[] GetFormsArceus(EntityContext context, IReadOnlyList<string> types, IReadOnlyList<string> forms)
     {
-        return generation switch
+        return context switch
         {
-            4 => [
+            Gen4 => [
                 types[00], // Normal
                 types[01], // Fighting
                 types[02], // Flying
@@ -641,7 +662,7 @@ public static class FormConverter
                 types[15],
                 types[16], // No Fairy Type
             ],
-            5 => [
+            Gen5 => [
                 types[00], // Normal
                 types[01], // Fighting
                 types[02], // Flying
@@ -660,7 +681,7 @@ public static class FormConverter
                 types[15],
                 types[16], // No Fairy type
             ],
-            8 when (Species)species is Arceus =>
+            Gen8a =>
             [
                 types[00], // Normal
                 types[01], // Fighting
@@ -717,7 +738,7 @@ public static class FormConverter
         (int)Raticate or (int)Marowak =>
         [
             types[0], // Normal
-            forms[810], // Alolan
+            forms[Alolan], // Alolan
             forms[1007], // Large
         ],
         _ =>
@@ -727,9 +748,9 @@ public static class FormConverter
         ],
     };
 
-    private static string[] GetFormsUnown(byte generation) => generation switch
+    private static string[] GetFormsUnown(EntityContext context) => context switch
     {
-        2 =>
+        Gen2 =>
         [
             "A", "B", "C", "D", "E",
             "F", "G", "H", "I", "J",
@@ -751,15 +772,57 @@ public static class FormConverter
         ],
     };
 
-    private static bool IsFormListSingleMega(ushort species) => species is
+    private static bool IsFormListSingleMega(ushort species, EntityContext context)
+    {
+        if (context.Generation < 9)
+            return IsFormListSingleMega6(species);
+
+        if (species is (int)Slowbro)
+            return false; // Galar, Mega
+        if (species is (int)Absol or (int)Garchomp or (int)Lucario)
+            return false; // Mega, Z Mega
+        if (IsFormListSingleMega9(species))
+            return true;
+
+        return IsFormListSingleMega6(species);
+    }
+
+    private static bool IsFormListSingleMega6(ushort species) => (Species)species is
         // XY
-        003 or 009 or 065 or 094 or 115 or 127 or 130 or 142 or 181 or 212 or
-        214 or 229 or 248 or 257 or 282 or 303 or 306 or 308 or 310 or 354 or
-        359 or 380 or 381 or 445 or 448 or 460 or
+        Venusaur or Blastoise or Alakazam or Gengar or Kangaskhan or Pinsir or Gyarados or Aerodactyl or Ampharos or Scizor or
+        Heracross or Houndoom or Tyranitar or Blaziken or Gardevoir or Mawile or Aggron or Medicham or Manectric or Banette or
+        Absol or Latias or Latios or Garchomp or Lucario or Abomasnow or
 
         // AO
-        015 or 018 or 080 or 208 or 254 or 260 or 302 or 319 or 323 or 334 or
-        362 or 373 or 376 or 384 or 428 or 475 or 531 or 719
+        Beedrill or Pidgeot or Slowbro or Steelix or Sceptile or Swampert or Sableye or Sharpedo or Camerupt or Altaria or
+        Glalie or Salamence or Metagross or Rayquaza or Lopunny or Gallade or Audino or Diancie
+    ;
+
+    private static bool IsFormListSingleMega9(ushort species) => (Species)species is
+        // XY
+        Venusaur or Blastoise or Alakazam or Gengar or Kangaskhan or Pinsir or Gyarados or Aerodactyl or Ampharos or Scizor or
+        Heracross or Houndoom or Tyranitar or Blaziken or Gardevoir or Mawile or Aggron or Medicham or Manectric or Banette or
+        /* Absol or */ Latias or Latios /* or Garchomp or Lucario */ or Abomasnow or
+
+        // AO
+        Beedrill or Pidgeot or Slowbro or Steelix or Sceptile or Swampert or Sableye or Sharpedo or Camerupt or Altaria or
+        Glalie or Salamence or Metagross or Rayquaza or Lopunny or Gallade or Audino or Diancie or
+
+        // ZA
+        Clefable or Victreebel or Starmie or Dragonite or
+        Meganium or Feraligatr or Skarmory or
+        Froslass or
+        Emboar or Excadrill or Scolipede or Scrafty or Eelektross or Chandelure or
+        Chesnaught or Delphox or Pyroar or Malamar or Barbaracle or Dragalge or Hawlucha or
+        Drampa or
+        Falinks
+
+        // MD
+        or Chimecho
+        or Staraptor or Heatran or Darkrai
+        or Golurk
+        or Crabominable or Golisopod or Zeraora
+        or Scovillain or Glimmora or Baxcalibur
     ;
 
     private static string[] GetMegaSingle(IReadOnlyList<string> types, IReadOnlyList<string> forms)
@@ -767,7 +830,7 @@ public static class FormConverter
         return
         [
             types[0], // Normal
-            forms[804], // Mega
+            forms[Mega], // Mega
         ];
     }
 
@@ -776,8 +839,18 @@ public static class FormConverter
         return
         [
             types[0], // Normal
-            forms[805], // Mega X
-            forms[806], // Mega Y
+            forms[MegaX], // Mega X
+            forms[MegaY], // Mega Y
+        ];
+    }
+
+    private static string[] GetMegaZ(IReadOnlyList<string> types, IReadOnlyList<string> forms)
+    {
+        return
+        [
+            types[0], // Normal
+            forms[Mega], // Mega
+            forms[MegaZ], // Mega Z
         ];
     }
 
@@ -790,9 +863,9 @@ public static class FormConverter
         ];
     }
 
-    private static string[] GetFormsHisui(ushort species, byte generation, IReadOnlyList<string> types, IReadOnlyList<string> forms) => generation switch
+    private static string[] GetFormsHisui(ushort species, EntityContext context, IReadOnlyList<string> types, IReadOnlyList<string> forms) => context switch
     {
-        8 => (Species)species switch
+        Gen8a => (Species)species switch
         {
             Lilligant =>
             [
@@ -839,10 +912,72 @@ public static class FormConverter
         return
         [
             types[0], // Normal
-            forms[804], // Mega
+            forms[Mega], // Mega
             forms[Galarian], // Galarian
         ];
     }
+
+    private static string[] GetFormsGreninja(IReadOnlyList<string> types, IReadOnlyList<string> forms, string[] result)
+    {
+        result[0] = types[0]; // Normal
+        result[1] = forms[962]; // Battle Bond
+        if (result.Length > 2)
+            result[2] = forms[1012]; // Ash-Greninja
+        if (result.Length > 3)
+            result[3] = forms[Mega]; // Mega Greninja
+        return result;
+    }
+
+    private static string[] GetFormsFloette(IReadOnlyList<string> forms, string[] result)
+    {
+        result[0] = forms[(int)Floette]; // Red
+        result[1] = forms[986]; // Yellow
+        result[2] = forms[987]; // Orange
+        result[3] = forms[988]; // Blue
+        result[4] = forms[989]; // White
+        if (result.Length > 5)
+            result[5] = forms[990]; // Eternal
+        if (result.Length > 6)
+            result[6] = forms[Mega];
+        return result;
+    }
+
+    private static string[] GetFormsZygarde(IReadOnlyList<string> forms, string[] result)
+    {
+        result[0] = forms[(int)Zygarde]; // 50% Forme (Aura Break)
+        result[1] = forms[1013]; // 10% Forme (Aura Break)
+        result[2] = forms[1014] + "-C"; // 10% Forme (Power Construct)
+        result[3] = forms[1015] + "-C"; // 50% Forme (Power Construct)
+        result[4] = forms[1016]; // Complete Forme
+        if (result.Length > 5)
+            result[5] = forms[Mega];
+        return result;
+    }
+
+    public static MegaFormNames GetMegaFormNames(ReadOnlySpan<string> forms, IReadOnlyList<string> gender, IReadOnlyList<string> types) => new()
+    {
+        Regular = forms[Mega],
+        X = forms[MegaX],
+        Y = forms[MegaY],
+        Z = forms[MegaZ],
+
+        Tatsu0 = $"{forms[Curly]}-{forms[Mega]}",
+        Tatsu1 = $"{forms[Droopy]}-{forms[Mega]}",
+        Tatsu2 = $"{forms[Stretchy]}-{forms[Mega]}",
+
+        MeowsticM = $"{gender[000]}-{forms[Mega]}",
+        MeowsticF = $"{gender[001]}-{forms[Mega]}",
+
+        Magearna0 = $"{types[000]}-{forms[Mega]}",
+        Magearna1 = $"{forms[1062]}-{forms[Mega]}",
+    };
+
+    private const int Mega = 804;
+    private const int MegaX = 805;
+    private const int MegaY = 806;
+    private const int MegaZ = 1141;
+
+    private const int Alolan = 810;
 
     private const int Galarian = 1068;
     private const int Gigantamax = 1069;
@@ -873,8 +1008,8 @@ public static class FormConverter
     private const int SingleStrike = 1086;
     private const int RapidStrike = 1087;
     private const int Dada = 1088;
-    private const int CalyIce = 1089; // Ice
-    private const int CalyGhost = 1090; // Shadow
+    private const int IceRider = 1089;
+    private const int ShadowRider = 1090;
 
     private const int Hisuian = 1094;
     private const int Lord = 1095;
@@ -918,6 +1053,10 @@ public static class FormConverter
     private const int Masterpiece = 1134;
     private const int Terastal = 1135;
     private const int Stellar = 1136;
+    private const int MediumVariety = 1137;
+    private const int SmallVariety = 1138;
+    private const int LargeVariety = 1139;
+    private const int JumboVariety = 1140;
 
     public static string GetGigantamaxName(IReadOnlyList<string> forms) => forms[Gigantamax];
 
@@ -951,7 +1090,7 @@ public static class FormConverter
         SetDecorations(result, 7, forms[CaramelSwirl]);
         SetDecorations(result, 8, forms[RainbowSwirl]);
 
-        static void SetDecorations(Span<string> result, [ConstantExpected] byte f, string baseName)
+        static void SetDecorations(Span<string> result, [ConstantExpected] byte f, ReadOnlySpan<char> baseName)
         {
             int start = f * AlcremieCountDecoration;
             var slice = result.Slice(start, AlcremieCountDecoration);
@@ -967,4 +1106,54 @@ public static class FormConverter
         (int)Alcremie => Enum.GetNames<AlcremieDecoration>(),
         _ => EMPTY,
     };
+
+    /// <summary>
+    /// Compatibility check for past-generation form list for <see cref="Pikachu"/>.
+    /// </summary>
+    /// <param name="formName">Desired form name</param>
+    /// <param name="formNames">List of all form names</param>
+    /// <returns><see langword="true"/> if the form name is a cosplay Pikachu form.</returns>
+    public static bool IsCosplayPikachu(ReadOnlySpan<char> formName, ReadOnlySpan<string> formNames)
+    {
+        for (int i = 729; i <= 734; i++)
+        {
+            if (formName.Equals(formNames[i], StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Converts a Form ID to string.
+    /// </summary>
+    /// <param name="species">Species ID the form belongs to</param>
+    /// <param name="form">Form to get the form name of</param>
+    /// <param name="strings">Localized string source to fetch with</param>
+    /// <param name="genders">List of genders names</param>
+    /// <param name="context">Format the form name should appear in</param>
+    public static string GetStringFromForm(ushort species, byte form, GameStrings strings, IReadOnlyList<string> genders, EntityContext context)
+    {
+        var forms = GetFormList(species, strings.Types, strings.forms, genders, context);
+        var result = form >= forms.Length ? string.Empty : forms[form];
+        return result;
+    }
+
+    /// <inheritdoc cref="GetStringFromForm(ushort, byte, GameStrings, IReadOnlyList{string}, EntityContext)"/>
+    public static string GetStringFromForm(ushort species, byte form, GameStrings strings, EntityContext context)
+        => GetStringFromForm(species, form, strings, GameInfo.GenderSymbolUnicode, context);
+}
+public sealed record MegaFormNames
+{
+    public required string Regular { get; init; }
+    public required string X { get; init; }
+    public required string Y { get; init; }
+    public required string Z { get; init; }
+
+    public required string Tatsu0 { get; init; }
+    public required string Tatsu1 { get; init; }
+    public required string Tatsu2 { get; init; }
+    public required string MeowsticM { get; init; }
+    public required string MeowsticF { get; init; }
+    public required string Magearna0 { get; init; }
+    public required string Magearna1 { get; init; }
 }

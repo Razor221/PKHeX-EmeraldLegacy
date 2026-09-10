@@ -17,7 +17,7 @@ public sealed record EncounterOutbreak9
     public Shiny Shiny => IsShiny ? Shiny.Always : Shiny.Random;
     public bool IsEgg => false;
     public Ball FixedBall => Ball.None;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public AbilityPermission Ability => AbilityPermission.Any12;
 
     public required ushort Species { get; init; }
@@ -26,6 +26,7 @@ public sealed record EncounterOutbreak9
     public required byte LevelMax { get; init; }
     public required byte Gender { get; init; }
     public required RibbonIndex Ribbon { get; init; }
+    public AreaWeather9 Weather { get; init; }
     public required byte MetBase { get; init; }
     public required bool IsForcedScaleRange { get; init; }
     public required byte ScaleMin { get; init; }
@@ -33,7 +34,7 @@ public sealed record EncounterOutbreak9
     public required bool IsShiny { get; init; }
     public required UInt128 MetFlags { get; init; }
 
-    private const int SIZE = 0x14 + 8;
+    private const int SIZE = 0xC + 16;
 
     public static EncounterOutbreak9[] GetArray(ReadOnlySpan<byte> data)
     {
@@ -53,13 +54,15 @@ public sealed record EncounterOutbreak9
         LevelMin = data[0x04],
         LevelMax = data[0x05],
         Ribbon = (RibbonIndex)data[0x06],
-        MetBase = data[0x07],
+        Weather = (AreaWeather9)data[0x07],
 
         IsForcedScaleRange = data[0x08] != 0,
         ScaleMin = data[0x09],
         ScaleMax = data[0x0A],
         IsShiny = data[0x0B] != 0,
-        MetFlags = ReadUInt128LittleEndian(data[0x0C..]),
+
+        MetBase = data[0x0C],
+        MetFlags = ReadUInt128LittleEndian(data[0x0C..]) >> 8,
     };
 
     public string Name => "Distribution Outbreak Encounter";
@@ -74,12 +77,12 @@ public sealed record EncounterOutbreak9
     public PK9 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PK9 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
         var pi = PersonalTable.SV[Species, Form];
         var pk = new PK9
         {
-            Language = lang,
+            Language = language,
             Species = Species,
             Form = Form,
             CurrentLevel = LevelMin,
@@ -90,7 +93,7 @@ public sealed record EncounterOutbreak9
             Version = version,
             Ball = (byte)Ball.Poke,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             ObedienceLevel = LevelMin,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
@@ -108,12 +111,12 @@ public sealed record EncounterOutbreak9
         return pk;
     }
 
-    private void SetPINGA(PK9 pk, EncounterCriteria criteria, PersonalInfo9SV pi)
+    private void SetPINGA(PK9 pk, in EncounterCriteria criteria, PersonalInfo9SV pi)
     {
         var rnd = Util.Rand;
-        pk.PID = rnd.Rand32();
+        pk.PID = EncounterUtil.GetRandomPID(pk, rnd, criteria.Shiny);
         pk.EncryptionConstant = rnd.Rand32();
-        pk.Nature = pk.StatNature = criteria.GetNature();
+        pk.Nature = pk.StatAlignment = criteria.GetNature();
         pk.Gender = criteria.GetGender(pi);
         pk.RefreshAbility(criteria.GetAbilityFromNumber(Ability));
 
@@ -121,8 +124,6 @@ public sealed record EncounterOutbreak9
 
         var type = Tera9RNG.GetTeraType(rnd.Rand64(), GemType.Default, Species, Form);
         pk.TeraTypeOriginal = (MoveType)type;
-        if (criteria.IsSpecifiedTeraType() && type != criteria.TeraType)
-            pk.SetTeraType(type); // sets the override type
 
         pk.HeightScalar = PokeSizeUtil.GetRandomScalar(rnd);
         pk.WeightScalar = PokeSizeUtil.GetRandomScalar(rnd);
@@ -141,18 +142,13 @@ public sealed record EncounterOutbreak9
             return false;
         if (evo.Form != Form)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
         return true;
     }
 
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-        return pk.EggLocation == expect;
-    }
 
     private bool IsMatchLocation(PKM pk)
     {
@@ -179,12 +175,12 @@ public sealed record EncounterOutbreak9
     {
         // Get first bitflag index
         var index = System.Numerics.BitOperations.TrailingZeroCount((ulong)flags);
-        if (index == 0)
-            index = 64 + System.Numerics.BitOperations.TrailingZeroCount((ulong)(flags >> 64));
+        if (index == 64) // no bits set in low half
+            index += System.Numerics.BitOperations.TrailingZeroCount((ulong)(flags >> 64));
         return (ushort)(met + index);
     }
 
-    private static bool IsMetLocationMatch(byte met, UInt128 flags, int actual)
+    private static bool IsMetLocationMatch(byte met, UInt128 flags, ushort actual)
     {
         var index = actual - met;
         if ((uint)index >= 128)
@@ -228,6 +224,12 @@ public sealed record EncounterOutbreak9
             }
         }
 
+        if (pk is IRibbonSetMark8 m)
+        {
+            if (m.HasWeatherMark(out var weather) && !CanSpawnInWeather(weather))
+                return EncounterMatchRating.DeferredErrors;
+        }
+
         return EncounterMatchRating.Match;
     }
 
@@ -239,4 +241,6 @@ public sealed record EncounterOutbreak9
     }
 
     #endregion
+
+    public bool CanSpawnInWeather(RibbonIndex mark) => Weather.IsMarkCompatible(mark);
 }

@@ -51,7 +51,7 @@ public static class CommonEvent3
     public static uint GetRegularAntishiny(uint a16, uint b16, uint idXor)
     {
         var pid = GetRegular(a16, b16);
-        if (ShinyUtil.GetIsShiny(idXor, pid, 8))
+        if (ShinyUtil.GetIsShiny3(idXor, pid))
             pid = GetRegularAntishiny(pid);
         return pid;
     }
@@ -231,7 +231,7 @@ public static class CommonEvent3
         while (true)
         {
             var u16 = seed & 0xFFFF;
-            var rand5 = LCRNG.Next5(seed) >> 16;
+            var rand5 = LCRNG.Next5(u16) >> 16;
             if (GetGenderBit0(rand5) == gender5)
                 return u16;
             seed = LCRNG.Next(seed);

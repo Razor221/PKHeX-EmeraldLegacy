@@ -21,6 +21,7 @@ public partial class RibbonEditor : Form
 
     private bool EnableBackgroundChange;
     private Control? LastToggledOn;
+    private readonly RibbonStrings RibbonStrings = GameInfo.Strings.Ribbons;
 
     public RibbonEditor(PKM pk)
     {
@@ -51,8 +52,6 @@ public partial class RibbonEditor : Form
         }
 
         const int count = AffixedRibbon.Max + 1; // 0 is a valid index, and max is inclusive with that index.
-        static string GetRibbonPropertyName(int z) => RibbonStrings.GetName($"Ribbon{(RibbonIndex)z}");
-        static ComboItem GetComboItem(int ribbonIndex) => new(GetRibbonPropertyName(ribbonIndex), ribbonIndex);
 
         var none = GameInfo.GetStrings(Main.CurrentLanguage).Move[0];
         var ds = new List<ComboItem>(1 + count) { new(none, AffixedRibbon.None) };
@@ -63,6 +62,9 @@ public partial class RibbonEditor : Form
         CB_Affixed.DataSource = ds;
         CB_Affixed.SelectedValue = (int)affixed.AffixedRibbon;
     }
+
+    private ComboItem GetComboItem(int ribbonIndex) => new(GetRibbonPropertyName(ribbonIndex), ribbonIndex);
+    private string GetRibbonPropertyName(int z) => RibbonStrings.GetName($"Ribbon{(RibbonIndex)z}");
 
     private void B_Cancel_Click(object sender, EventArgs e) => Close();
 
@@ -92,6 +94,8 @@ public partial class RibbonEditor : Form
         foreach (var r in slice)
             dict.Add(r.PropertyName, r);
 
+        // Find which ribbons are valid by brute forcing all valid ribbons onto the entity.
+        // The final ribbon state is what we will use to indicate which are possible.
         var clone = pk.Clone();
         RibbonApplicator.SetAllValidRibbons(clone);
         var otherList = RibbonInfo.GetRibbonInfo(clone);
@@ -103,7 +107,7 @@ public partial class RibbonEditor : Form
         {
             var name = rib.Name;
             Color color = dict.TryGetValue(name, out var r)
-                ? r.IsMissing ? Color.LightYellow : Color.Pink
+                ? r.IsMissing ? WinFormsUtil.ColorHint : WinFormsUtil.ColorSuspect
                 : GetColor(otherList, name);
             AddRibbonChoice(rib, color);
         }
@@ -130,11 +134,13 @@ public partial class RibbonEditor : Form
     private static Color GetColor(List<RibbonInfo> otherList, string ribName)
     {
         if (ribName.StartsWith("RibbonMark"))
-            return Color.SeaShell;
+            return WinFormsUtil.ColorAlternate;
         var other = otherList.Find(z => z.Name == ribName);
         if (other is null)
             return Color.Transparent;
-        return other.HasRibbon ? Color.PaleGreen : Color.Transparent;
+        if (!other.HasRibbon)
+            return Color.Transparent;
+        return WinFormsUtil.ColorValid;
     }
 
     private void AddRibbonSprite(RibbonInfo rib)
@@ -177,6 +183,8 @@ public partial class RibbonEditor : Form
             BackColor = color,
             AutoSize = true,
         };
+        if (color != Color.Transparent)
+            label.ForeColor = SystemColors.ControlText;
         TLP_Ribbons.Controls.Add(label, 1, row);
 
         if (rib.Type is RibbonValueType.Byte) // numeric count ribbon
@@ -204,7 +212,11 @@ public partial class RibbonEditor : Form
             var controlName = PrefixPB + rib.Name;
             var pb = FLP_Ribbons.Controls[controlName] ?? throw new ArgumentException($"{controlName} not found in {FLP_Ribbons.Name}.");
             pb.Visible = (rib.RibbonCount = (byte)nud.Value) != 0;
-            pb.BackgroundImage = RibbonSpriteUtil.GetRibbonSprite(rib.Name, (int)nud.Maximum, (int)nud.Value);
+
+            var max = rib.MaxCount;
+            if (max == 8 && rib.Name is nameof(IRibbonSetMemory6.RibbonCountMemoryBattle) && Entity.Format >= 9)
+                max = 7;
+            pb.BackgroundImage = RibbonSpriteUtil.GetRibbonSprite(rib.Name, max, (int)nud.Value);
 
             ToggleNewRibbon(rib, pb);
         };
@@ -248,9 +260,8 @@ public partial class RibbonEditor : Form
     {
         if (!EnableBackgroundChange)
             return;
-        if (LastToggledOn is not null)
-            LastToggledOn.BackColor = Color.Transparent;
-        pb.BackColor = rib.HasRibbon ? Color.LightBlue : Color.Transparent;
+        LastToggledOn?.BackColor = Color.Transparent;
+        pb.BackColor = rib.HasRibbon ? WinFormsUtil.ColorAccept : Color.Transparent;
         LastToggledOn = pb;
     }
 

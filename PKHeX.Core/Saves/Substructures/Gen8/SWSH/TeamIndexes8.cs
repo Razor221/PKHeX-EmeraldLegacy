@@ -1,4 +1,3 @@
-using System;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -21,6 +20,7 @@ public sealed class TeamIndexes8 : ITeamIndexSet
 
     public TeamIndexes8(SAV8SWSH sav, SCBlock indexes, SCBlock locks) : this((SaveFile)sav, indexes, locks) { }
     public TeamIndexes8(SAV9SV sav, SCBlock indexes, SCBlock locks) : this((SaveFile)sav, indexes, locks) { }
+    public TeamIndexes8(SAV9ZA sav, SCBlock indexes, SCBlock locks) : this((SaveFile)sav, indexes, locks) { }
 
     public void LoadBattleTeams()
     {
@@ -32,7 +32,7 @@ public sealed class TeamIndexes8 : ITeamIndexSet
 
         for (int i = 0; i < TeamCount * 6; i++)
         {
-            short val = ReadInt16LittleEndian(Indexes.Data.AsSpan(i * 2));
+            short val = ReadInt16LittleEndian(Indexes.Data[(i*2)..]);
             if (val < 0)
             {
                 TeamSlots[i] = NONE_SELECTED;
@@ -60,7 +60,7 @@ public sealed class TeamIndexes8 : ITeamIndexSet
 
     public void SaveBattleTeams()
     {
-        var span = Indexes.Data.AsSpan();
+        var span = Indexes.Data;
         for (int i = 0; i < TeamCount * 6; i++)
         {
             int index = TeamSlots[i];

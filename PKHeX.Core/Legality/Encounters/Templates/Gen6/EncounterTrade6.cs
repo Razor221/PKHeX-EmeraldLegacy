@@ -5,7 +5,8 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 6 Trade Encounter
 /// </summary>
-public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTrainer, IFixedNickname, IFixedGender, IFixedNature, IFixedIVSet, IEncounterConvertible<PK6>, IMemoryOTReadOnly
+public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IEncounterConvertible<PK6>,
+    IFixedTrainer, IFixedNickname, IFixedGender, IFixedNature, IFixedIVSet, IMemoryOTReadOnly, ITrainerID32ReadOnly
 {
     public byte Generation => 6;
     public EntityContext Context => EntityContext.Gen6;
@@ -14,15 +15,17 @@ public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTr
     public bool IsEgg => false;
     public Ball FixedBall => Ball.Poke;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsFixedTrainer => true;
     public bool IsFixedNickname { get; init; } = true;
 
-    private string[] TrainerNames { get; }
-    private string[] Nicknames { get; }
+    private readonly ReadOnlyMemory<string> TrainerNames;
+    private readonly ReadOnlyMemory<string> Nicknames;
 
     public required Nature Nature { get; init; }
-    public required ushort ID32 { get; init; }
+    public required ushort TID16 { get; init; }
+    public ushort SID16 => 0;
+    public uint ID32 => TID16;
     public required AbilityPermission Ability { get; init; }
     public required byte Gender { get; init; }
     public required byte OTGender { get; init; }
@@ -63,13 +66,14 @@ public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTr
 
     public PK6 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.AO[Species];
         var rnd = Util.Rand;
+        var geo = tr.GetRegionOrigin(language);
         var pk = new PK6
         {
-            PID = rnd.Rand32(),
+            PID = EncounterUtil.GetRandomPID(tr, rnd, Shiny),
             EncryptionConstant = rnd.Rand32(),
             Species = Species,
             CurrentLevel = Level,
@@ -82,9 +86,9 @@ public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTr
 
             ID32 = ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = OTGender,
-            OriginalTrainerName = TrainerNames[lang],
+            OriginalTrainerName = TrainerNames.Span[language],
 
             OriginalTrainerMemory = OriginalTrainerMemory,
             OriginalTrainerMemoryIntensity = OriginalTrainerMemoryIntensity,
@@ -93,17 +97,17 @@ public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTr
             OriginalTrainerFriendship = pi.BaseFriendship,
 
             IsNicknamed = IsFixedNickname,
-            Nickname = IsFixedNickname ? Nicknames[lang] : SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = IsFixedNickname ? Nicknames.Span[language] : SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
 
             HandlingTrainerName = tr.OT,
             HandlingTrainerGender = tr.Gender,
             CurrentHandler = 1,
             HandlingTrainerFriendship = pi.BaseFriendship,
+
+            ConsoleRegion = geo.ConsoleRegion,
+            Country = geo.Country,
+            Region = geo.Region,
         };
-        if (tr is IRegionOrigin r)
-            r.CopyRegionOrigin(pk);
-        else
-            pk.SetDefaultRegionOrigins(lang);
 
         EncounterUtil.SetEncounterMoves(pk, version, Level);
         if (pk.IsShiny)
@@ -119,14 +123,14 @@ public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTr
 
     #region Matching
 
-    public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => (uint)language < TrainerNames.Length && trainer.SequenceEqual(TrainerNames[language]);
+    public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => (uint)language < TrainerNames.Length && trainer.SequenceEqual(TrainerNames.Span[language]);
     public bool IsNicknameMatch(PKM pk, ReadOnlySpan<char> nickname, int language)
     {
         if (Species is (ushort)Core.Species.Farfetchd && nickname is "Quacklin’" or "Quacklin'")
             return true;
-        return (uint)language < Nicknames.Length && nickname.SequenceEqual(Nicknames[language]);
+        return (uint)language < Nicknames.Length && nickname.SequenceEqual(Nicknames.Span[language]);
     }
-    public string GetNickname(int language) => (uint)language < Nicknames.Length ? Nicknames[language] : Nicknames[0];
+    public string GetNickname(int language) => Nicknames.Span[(uint)language < Nicknames.Length ? language : 0];
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
@@ -145,25 +149,18 @@ public sealed record EncounterTrade6 : IEncounterable, IEncounterMatch, IFixedTr
             return false;
         if (pk.OriginalTrainerGender != OTGender)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         return true;
     }
 
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = EggLocation;
-        if (pk is PB8 && expect is 0)
-            expect = Locations.Default8bNone;
-        return pk.EggLocation == expect;
-    }
     private bool IsMatchNatureGenderShiny(PKM pk)
     {
         if (!Shiny.IsValid(pk))
             return false;
         if (Gender != pk.Gender)
             return false;
-        if (Nature != Nature.Random && pk.Nature != Nature)
+        if (Nature.IsFixed && pk.Nature != Nature)
             return false;
         return true;
     }

@@ -56,15 +56,15 @@ public static class SwishCrypto
         // Due to the xorpad being extended 0x7F->0x80, if len%7F==0, we miss the last vectored xor.
         // Subtract 1 from the data size in the event that the length is an even multiple, to get one less iteration.
         var xp = StaticXorpad;
-        var xp64 = MemoryMarshal.Cast<byte, Vector<ulong>>(xp);
-        var size = xp.Length - 1;
+        var xpVec = MemoryMarshal.Cast<byte, Vector<byte>>(xp);
+        var size = xp.Length - 1; // 0x7F, not 0x80
         int iterations = (data.Length - 1) / size;
         do
         {
-            var slice = MemoryMarshal.Cast<byte, Vector<ulong>>(data[..xp.Length]);
+            var slice = MemoryMarshal.Cast<byte, Vector<byte>>(data[..xp.Length]);
             for (int i = slice.Length - 1; i >= 0; i--)
-                slice[i] ^= xp64[i];
-            data = data[size..];
+                slice[i] ^= xpVec[i];
+            data = data[size..]; // Advance by 0x7F, not 0x80
         } while (--iterations != 0);
         // Xor the remainder.
         for (int i = data.Length - 1; i >= 0; i--)
@@ -109,12 +109,11 @@ public static class SwishCrypto
         return ReadBlocks(payload);
     }
 
-    private const int BlockDataRatioEstimate1 = 777; // bytes per block, on average (generous)
-    private const int BlockDataRatioEstimate2 = 555; // bytes per block, on average (stingy)
+    private const int BlockDataRatioEstimateDeserialize = 555; // bytes per block, on average (stingy)
 
     private static List<SCBlock> ReadBlocks(ReadOnlySpan<byte> data)
     {
-        var result = new List<SCBlock>(data.Length / BlockDataRatioEstimate2);
+        var result = new List<SCBlock>(data.Length / BlockDataRatioEstimateDeserialize);
         int offset = 0;
         while (offset < data.Length)
         {
@@ -146,15 +145,20 @@ public static class SwishCrypto
     /// <returns>Raw save data without the final xorpad layer.</returns>
     public static byte[] GetDecryptedRawData(IReadOnlyList<SCBlock> blocks)
     {
-        using var ms = new MemoryStream(blocks.Count * BlockDataRatioEstimate1);
+        var length = SIZE_HASH;
+        foreach (var block in blocks)
+            length += block.GetSerializedLength();
+
+        var result = new byte[length];
+        GetDecryptedRawData(blocks, result);
+        return result;
+    }
+
+    private static void GetDecryptedRawData(IReadOnlyList<SCBlock> blocks, byte[] result)
+    {
+        using var ms = new MemoryStream(result);
         using var bw = new BinaryWriter(ms);
         foreach (var block in blocks)
             block.WriteBlock(bw);
-
-        var result = new byte[ms.Position + SIZE_HASH];
-        var payload = result.AsSpan()[..^SIZE_HASH];
-        ms.Position = 0;
-        ms.ReadExactly(payload);
-        return result;
     }
 }

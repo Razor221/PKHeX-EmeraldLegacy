@@ -18,7 +18,7 @@ public sealed record EncounterGift2
     public byte Form => 0;
     public Ball FixedBall => Ball.Poke;
     ushort ILocation.Location => Location;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsShiny => Shiny == Shiny.Always;
     public AbilityPermission Ability => AbilityPermission.OnlyHidden;
     public bool IsEgg => EggCycles != 0;
@@ -94,12 +94,17 @@ public sealed record EncounterGift2
     public PK2 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
         var lang = GetLanguage((LanguageID)tr.Language);
+        var isJapanese = lang == Japanese;
         var pi = PersonalTable.C[Species];
-        var pk = new PK2
+        var pk = new PK2(isJapanese)
         {
             Species = Species,
             CurrentLevel = CurrentLevel == 0 ? LevelMin : CurrentLevel,
             OriginalTrainerFriendship = pi.BaseFriendship,
+
+            DV16 = IVs.IsSpecified ? EncounterUtil.GetDV16(IVs)
+                : criteria.IsSpecifiedIVsAll() ? criteria.GetCombinedDVs()
+                : EncounterUtil.GetRandomDVs(Util.Rand, criteria.Shiny.IsShiny(), criteria.HiddenPowerType),
 
             TID16 = Trainer switch
             {
@@ -126,27 +131,23 @@ public sealed record EncounterGift2
                 _ => EncounterUtil.GetTrainerName(tr, 1),
             },
         };
-        pk.SetNotNicknamed((int)lang);
 
         if (IsEgg)
         {
             // Fake as hatched on G/S.
+            // All zero values.
         }
-        else
+        else if (Version == GameVersion.C)
         {
             pk.MetLevel = LevelMin;
             pk.MetLocation = Location;
             //pk.MetTimeOfDay = 0;
         }
 
+        pk.SetNotNicknamed((int)lang);
         if (Shiny == Shiny.Always)
             pk.SetShiny();
         pk.SetMoves(Moves);
-        if (IVs.IsSpecified)
-            criteria.SetRandomIVs(pk, IVs);
-        else
-            criteria.SetRandomIVs(pk);
-
         pk.ResetPartyStats();
         return pk;
     }
@@ -162,7 +163,7 @@ public sealed record EncounterGift2
         if (Language == LanguageRestriction.InternationalNotEnglish && request is not (French or Italian or German or Spanish))
             return French;
 
-        if (request is Hacked or UNUSED_6 or >= Korean)
+        if (request is None or UNUSED_6 or >= Korean)
             return English;
         return request;
     }
@@ -176,7 +177,7 @@ public sealed record EncounterGift2
     {
         if (Shiny == Shiny.Always && !pk.IsShiny)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!IsMatchEggLocationInternal(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -256,7 +257,7 @@ public sealed record EncounterGift2
         return ot[..len].SequenceEqual(name);
     }
 
-    private bool IsTrainerIDValid(ITrainerID16 pk) => Trainer switch
+    private bool IsTrainerIDValid<T>(T pk) where T : ITrainerID16 => Trainer switch
     {
         Recipient => true,
         GiftStadiumJPN => pk.TID16 == TrainerIDStadiumJPN,
@@ -265,13 +266,10 @@ public sealed record EncounterGift2
         _ => true,
     };
 
-    private bool IsMatchEggLocation(PKM pk)
+    private bool IsMatchEggLocationInternal(PKM pk)
     {
         if (pk is not ICaughtData2 c2)
-        {
-            var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-            return pk.EggLocation == expect;
-        }
+            return this.IsMatchEggLocation(pk);
 
         if (pk.IsEgg)
         {
@@ -302,7 +300,7 @@ public sealed record EncounterGift2
 
     private bool IsMatchLocation(PKM pk)
     {
-        if (IsEgg)
+        if (IsEgg && !pk.IsEgg)
             return true;
         if (pk is not ICaughtData2 c2)
             return true;

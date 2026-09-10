@@ -1,4 +1,5 @@
 using System;
+using static PKHeX.Core.RandomCorrelationRating;
 
 namespace PKHeX.Core;
 
@@ -6,14 +7,14 @@ namespace PKHeX.Core;
 /// Generation 3 Event Gift
 /// </summary>
 /// <remarks>Specialized for the PCJP gift distribution machines.</remarks>
-public sealed class EncounterGift3JPN(ushort Species, Distribution3JPN Distribution)
+public sealed record EncounterGift3JPN(ushort Species, Distribution3JPN Distribution)
     : IEncounterable, IEncounterMatch, IRandomCorrelationEvent3, IFixedTrainer
 {
     public ushort Species { get; } = Species;
     public Distribution3JPN Distribution { get; } = Distribution;
     public const byte Level = 10;
 
-    private const PIDType Method = PIDType.BACD_U_AX;
+    private const PIDType Method = PIDType.BACD_R_A;
     public PIDType GetSuggestedCorrelation() => Method;
 
     public byte Form => 0;
@@ -23,7 +24,7 @@ public sealed class EncounterGift3JPN(ushort Species, Distribution3JPN Distribut
     public byte LevelMin => Level;
     public byte LevelMax => Level;
     public ushort Location => 255;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public AbilityPermission Ability => AbilityPermission.Any12;
     public Ball FixedBall => Ball.Poke;
     public Shiny Shiny => Shiny.Never;
@@ -37,7 +38,7 @@ public sealed class EncounterGift3JPN(ushort Species, Distribution3JPN Distribut
     public bool IsTrainerMatch(PKM pk, ReadOnlySpan<char> trainer, int language) => true; // checked in explicit match
 
     #region Generating
-    PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
+    PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr);
     PKM IEncounterConvertible.ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria) => ConvertToPKM(tr, criteria);
 
     public PK3 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
@@ -69,22 +70,27 @@ public sealed class EncounterGift3JPN(ushort Species, Distribution3JPN Distribut
         return pk;
     }
 
-    private static void SetPINGA(PK3 pk, EncounterCriteria criteria, PersonalInfo3 pi)
+    private static void SetPINGA(PK3 pk, in EncounterCriteria criteria, PersonalInfo3 pi)
     {
         uint seed = Util.Rand32();
+        var filterIVs = criteria.IsSpecifiedIVs(2);
         var gr = pi.Gender;
         var idXor = pk.TID16; // no SID
         while (true)
         {
-            var pid = CommonEvent3.GetAntishiny(ref seed, idXor);
-            if (criteria.IsSpecifiedNature() && criteria.Nature != (Nature)(pid % 25))
+            var pid = CommonEvent3.GetRegularAntishiny(ref seed, idXor);
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
                 continue; // try again
-            var gender = EntityGender.GetFromPIDAndRatio(pid, gr);
-            if (!criteria.IsGenderSatisfied(gender))
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(EntityGender.GetFromPIDAndRatio(pid, gr)))
+                continue;
+            var iv32 = ClassicEraRNG.GetSequentialIVs(ref seed);
+            if (criteria.IsSpecifiedHiddenPower() && !criteria.IsSatisfiedHiddenPower(iv32))
+                continue;
+            if (filterIVs && !criteria.IsSatisfiedIVs(iv32))
                 continue;
 
             pk.PID = pid;
-            pk.IV32 = PIDGenerator.SetIVsFromSeedSequentialLCRNG(ref seed);
+            pk.IV32 = iv32;
             pk.RefreshAbility((int)(pid & 1));
             pk.OriginalTrainerGender = (byte)GetGender(LCRNG.Next16(ref seed));
             return;
@@ -144,22 +150,22 @@ public sealed class EncounterGift3JPN(ushort Species, Distribution3JPN Distribut
         return true;
     }
 
-    public bool IsCompatible(PIDType type, PKM pk) => type is Method;
+    public RandomCorrelationRating IsCompatible(PIDType type, PKM pk) => type is Method ? Match : Mismatch;
 
-    public bool IsCompatibleReviseReset(ref PIDIV value, PKM pk)
+    public RandomCorrelationRating IsCompatibleReviseReset(ref PIDIV value, PKM pk)
     {
         var prev = value.Mutated; // if previously revised, use that instead.
         var type = prev is 0 ? value.Type : prev;
-        if (type is not PIDType.BACD_AX)
-            return false;
+        if (type is not (PIDType.BACD or PIDType.BACD_R))
+            return Mismatch;
 
         var seed = value.OriginSeed;
         var rand5 = LCRNG.Next5(seed) >> 16;
         var expect = GetGender(rand5);
         if (pk.OriginalTrainerGender != expect)
-            return false;
+            return Mismatch;
 
-        return true; // Table weight -> gift selection is a separate RNG, nothing to check!
+        return Match; // Table weight -> gift selection is a separate RNG, nothing to check!
     }
 
     private static uint GetGender(uint rand16) => CommonEvent3.GetGenderBit7(rand16);

@@ -10,39 +10,46 @@ public class ShowdownSetTests
     [Fact]
     public void SimulatorGetParse()
     {
-        foreach (ReadOnlySpan<char> setstr in Sets)
+        var settings = new BattleTemplateExportSettings(BattleTemplateConfig.CommunityStandard);
+
+        foreach (var setstr in Sets)
         {
-            var set = new ShowdownSet(setstr).GetSetLines();
+            var set = new ShowdownSet(setstr).GetSetLines(settings);
             foreach (var line in set)
-                setstr.Contains(line, StringComparison.Ordinal).Should().BeTrue($"Line {line} should be in the set {setstr}");
+                setstr.Contains(line, StringComparison.Ordinal).Should().BeTrue($"`{line}` should be in the set: {setstr}");
         }
     }
 
     [Fact]
     public void SimulatorGetEncounters()
     {
+        // Set must have visited US/UM. Sun/Moon origin can't obtain the moves unless traded.
         var set = new ShowdownSet(SetGlaceonUSUMTutor);
-        var pk7 = new PK7 {Species = set.Species, Form = set.Form, Moves = set.Moves};
+        var pk7 = new PK7 {Species = set.Species, Form = set.Form};
         var encounters = EncounterMovesetGenerator.GenerateEncounters(pk7, set.Moves, GameVersion.MN);
         Assert.False(encounters.Any());
+
+        // Mark as traded, to allow tutor moves to be recognized as valid.
+        // Find the first egg, generate, won't be evolved yet.
         pk7.HandlingTrainerName = TrainerName.ProgramINT;
         encounters = EncounterMovesetGenerator.GenerateEncounters(pk7, set.Moves, GameVersion.MN);
-        var first = encounters.FirstOrDefault();
-        Assert.NotNull(first);
+        var egg = encounters.OfType<EncounterEgg7>().FirstOrDefault();
+        Assert.NotNull(egg);
 
-        var egg = (EncounterEgg)first;
-        var info = new SimpleTrainerInfo(GameVersion.SN);
-        var pk = egg.ConvertToPKM(info);
+        var trainer = new SimpleTrainerInfo(GameVersion.SN);
+        var pk = egg.ConvertToPKM(trainer);
         Assert.True(pk.Species != set.Species);
 
+        // Ensure was legally generated.
         var la = new LegalityAnalysis(pk);
         la.Valid.Should().BeTrue($"Encounter should have generated legally: {egg} {la.Report()}");
 
-        var test = EncounterMovesetGenerator.GenerateEncounters(pk7, info, set.Moves).ToList();
+        // Check all possible encounters.
+        var test = EncounterMovesetGenerator.GenerateEncounters(pk7, trainer, set.Moves).ToList();
         for (var i = 0; i < test.Count; i++)
         {
             var t = test[i];
-            var convert = t.ConvertToPKM(info);
+            var convert = t.ConvertToPKM(trainer);
             var la2 = new LegalityAnalysis(convert);
             la2.Valid.Should().BeTrue($"Encounter {i} should have generated legally: {t} {la2.Report()}");
         }
@@ -164,6 +171,98 @@ public class ShowdownSetTests
     }
 
     [Theory]
+    [InlineData(SetAllTokenExample)]
+    public void SimulatorTranslate(string message, string languageOriginal = "en")
+    {
+        var settingsOriginal = new BattleTemplateExportSettings(BattleTemplateConfig.CommunityStandard, languageOriginal);
+        if (!ShowdownParsing.TryParseAnyLanguage(message, out var set))
+            throw new Exception("Input failed");
+
+        var all = BattleTemplateLocalization.ConfigCache.GetAll();
+        foreach (var l in all)
+        {
+            var languageTarget = l.Key;
+            if (languageTarget == languageOriginal)
+                continue;
+
+            var exportSettings = new BattleTemplateExportSettings(languageTarget);
+            var translated = set.GetText(exportSettings);
+            translated.Should().NotBeNullOrEmpty();
+            translated.Should().NotBe(message);
+
+            // Convert back, should be 1:1
+            if (!ShowdownParsing.TryParseAnyLanguage(translated, out var set2))
+                throw new Exception($"{languageTarget} parse failed");
+            set2.InvalidLines.Should().BeEmpty();
+            set2.Species.Should().Be(set.Species);
+            set2.Form.Should().Be(set.Form);
+
+            var result = set2.GetText(settingsOriginal);
+            result.Should().Be(message);
+        }
+    }
+
+    [Fact]
+    public void StatNamesNoSubstring()
+    {
+        var all = BattleTemplateLocalization.ConfigCache.GetAll();
+        foreach (var l in all)
+        {
+            var languageTarget = l.Key;
+            var x = l.Value;
+
+            CheckSubstring(x.StatNames.Names, languageTarget);
+            CheckSubstring(x.StatNamesFull.Names, languageTarget);
+        }
+
+        static void CheckSubstring(ReadOnlySpan<string> statNames, string languageTarget)
+        {
+            // ensure no stat name is a substring of another
+            for (int i = 0; i < statNames.Length; i++)
+            {
+                var name = statNames[i];
+                for (int j = 0; j < statNames.Length; j++)
+                {
+                    if (i == j)
+                        continue;
+                    var other = statNames[j];
+                    if (other.Contains(name) || name.Contains(other))
+                        throw new Exception($"Stat name {name} is a substring of {other} in {languageTarget}");
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(SetAllTokenExample)]
+    public void SimulatorTranslateHABCDS(string message, string languageOriginal = "en")
+    {
+        var settingsOriginal = new BattleTemplateExportSettings(BattleTemplateConfig.CommunityStandard, languageOriginal);
+        if (!ShowdownParsing.TryParseAnyLanguage(message, out var set))
+            throw new Exception("Input failed");
+
+        var target = new BattleTemplateExportSettings("ja")
+        {
+            StatsIVs = StatDisplayStyle.HABCDS,
+            StatsEVs = StatDisplayStyle.HABCDS,
+        };
+
+        var translated = set.GetText(target);
+        translated.Should().NotBeNullOrEmpty();
+        translated.Should().NotBe(message);
+
+        // Convert back, should be 1:1
+        if (!ShowdownParsing.TryParseAnyLanguage(translated, out var set2))
+            throw new Exception("ja parse failed");
+        set2.InvalidLines.Should().BeEmpty();
+        set2.Species.Should().Be(set.Species);
+        set2.Form.Should().Be(set.Form);
+
+        var result = set2.GetText(settingsOriginal);
+        result.Should().Be(message);
+    }
+
+    [Theory]
     [InlineData(SetDuplicateMoves, 3)]
     public void SimulatorParseDuplicate(string text, int moveCount)
     {
@@ -179,8 +278,8 @@ public class ShowdownSetTests
     {
         var set = new ShowdownSet(text);
         var pk7 = new PK3 { Species = set.Species, Form = set.Form, Moves = set.Moves, CurrentLevel = set.Level };
-        var encs = EncounterMovesetGenerator.GenerateEncounters(pk7, set.Moves);
-        var tr3 = encs.First(z => z is EncounterTrade3);
+        var encs = EncounterMovesetGenerator.GenerateEncounters(pk7, set.Moves, GameVersion.FR);
+        var tr3 = encs.OfType<EncounterTrade3>().First();
         var pk3 = tr3.ConvertToPKM(new SimpleTrainerInfo(GameVersion.FR));
 
         var la = new LegalityAnalysis(pk3);
@@ -261,6 +360,24 @@ public class ShowdownSetTests
         - Hyper Voice
         """;
 
+    private const string SetAllTokenExample =
+        """
+        Pikachu (F) @ Oran Berry
+        Ability: Static
+        Level: 69
+        Shiny: Yes
+        Friendship: 42
+        Dynamax Level: 3
+        Gigantamax: Yes
+        EVs: 12 HP / 5 Atk / 6 Def / 17 SpA / 4 SpD / 101 Spe
+        Quirky Nature
+        IVs: 30 HP / 22 Atk / 29 Def / 7 SpA / 1 SpD / 0 Spe
+        - Pound
+        - Sky Attack
+        - Hyperspace Fury
+        - Metronome
+        """;
+
     private const string SetSmeargle =
         """
         Smeargle @ Focus Sash
@@ -329,7 +446,7 @@ public class ShowdownSetTests
         SetMunchSnorLax,
 
         """
-        Greninja @ Choice Specs
+        Greninja-Ash @ Choice Specs
         Ability: Battle Bond
         EVs: 252 SpA / 4 SpD / 252 Spe
         Timid Nature
@@ -339,4 +456,62 @@ public class ShowdownSetTests
         - Dark Pulse
         """,
     ];
+
+    [Theory]
+    [InlineData("Gholdengo\nEVs: 8 Atk / 4 HP", 4, 8, 0, 0, 0, 0)] // Out of order: Atk before HP
+    [InlineData("Gholdengo\nEVs: 252 Spe / 4 SpD / 252 Atk", 0, 252, 0, 252, 0, 4)] // Speed first
+    [InlineData("Gholdengo\nEVs: 4 Def / 252 HP / 252 SpA", 252, 0, 4, 0, 252, 0)] // Def before HP
+    [InlineData("Gholdengo\nEVs: 252 HP / 4 SpD / 252 Spe", 252, 0, 0, 252, 0, 4)] // Standard order
+    public void SimulatorParseEVsOutOfOrder(string text, int hp, int atk, int def, int spe, int spa, int spd)
+    {
+        // EVs array is stored as: HP, Atk, Def, Spe, SpA, SpD (speed in the middle, not last)
+        var success = ShowdownParsing.TryParseAnyLanguage(text, out var set);
+        success.Should().BeTrue("Parsing should succeed");
+        set.Should().NotBeNull();
+
+        var evs = set.EVs;
+        evs[0].Should().Be(hp, "HP EV should match");
+        evs[1].Should().Be(atk, "Atk EV should match");
+        evs[2].Should().Be(def, "Def EV should match");
+        evs[3].Should().Be(spe, "Spe EV should match");
+        evs[4].Should().Be(spa, "SpA EV should match");
+        evs[5].Should().Be(spd, "SpD EV should match");
+    }
+
+    [Theory]
+    [InlineData("Gholdengo\nIVs: 0 Atk / 31 Spe", 31, 0, 31, 31, 31, 31)] // Partial IVs, out of order
+    [InlineData("Gholdengo\nIVs: 0 Spe / 0 Atk", 31, 0, 31, 0, 31, 31)] // Both specified, reversed
+    public void SimulatorParseIVsOutOfOrder(string text, int hp, int atk, int def, int spe, int spa, int spd)
+    {
+        // IVs array is stored as: HP, Atk, Def, Spe, SpA, SpD (speed in the middle, not last)
+        var success = ShowdownParsing.TryParseAnyLanguage(text, out var set);
+        success.Should().BeTrue("Parsing should succeed");
+        set.Should().NotBeNull();
+
+        var ivs = set.IVs;
+        ivs[0].Should().Be(hp, "HP IV should match");
+        ivs[1].Should().Be(atk, "Atk IV should match");
+        ivs[2].Should().Be(def, "Def IV should match");
+        ivs[3].Should().Be(spe, "Spe IV should match");
+        ivs[4].Should().Be(spa, "SpA IV should match");
+        ivs[5].Should().Be(spd, "SpD IV should match");
+    }
+
+    [Theory]
+    [InlineData("ja", "ゴルーグ\n努力値 252 素早さ / 4 特攻 / 252 攻撃")] // Japanese: Speed/SpA/Atk order (out of order)
+    public void SimulatorParseStatsLocalizedOutOfOrder(string language, string text)
+    {
+        var localization = BattleTemplateLocalization.GetLocalization(language);
+        var set = new ShowdownSet(text, localization);
+
+        set.Species.Should().NotBe(0, "Species should be parsed");
+        set.InvalidLines.Should().BeEmpty("All lines should be valid");
+
+        // EVs array is stored as: HP, Atk, Def, Spe, SpA, SpD
+        var evs = set.EVs;
+        // Verify all three EVs were parsed (HP=0, Atk=252, Def=0, Spe=252, SpA=4, SpD=0)
+        evs[1].Should().Be(252, "Atk EV should be 252");
+        evs[3].Should().Be(252, "Spe EV should be 252");
+        evs[4].Should().Be(4, "SpA EV should be 4");
+    }
 }

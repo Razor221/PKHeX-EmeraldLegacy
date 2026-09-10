@@ -22,7 +22,7 @@ public sealed class GP1(Memory<byte> Raw)
     public EntityContext Context => EntityContext.Gen7b;
     public AbilityPermission Ability => AbilityPermission.Any12;
     public ushort Location => Locations.GO7;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public Ball FixedBall => Ball.None;
     public Shiny Shiny => Shiny.Random;
 
@@ -166,6 +166,9 @@ public sealed class GP1(Memory<byte> Raw)
             OriginalTrainerName = sav.OT,
             Ball = 4,
             Language = sav.Language,
+
+            ReceivedDate = EncounterDate.GetDateSwitch(),
+            ReceivedTime = EncounterDate.GetTime(),
         };
 
         var nick = Nickname;

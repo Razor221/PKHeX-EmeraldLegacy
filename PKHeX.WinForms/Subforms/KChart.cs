@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Drawing;
 using System.Windows.Forms;
 using PKHeX.Core;
 using PKHeX.Drawing;
@@ -12,11 +13,17 @@ public partial class KChart : Form
 {
     private readonly SaveFile SAV;
     private readonly string[] abilities;
+    private readonly string[] moves;
+    private readonly string SpeciesNumberFormat;
 
     public KChart(SaveFile sav)
     {
         InitializeComponent();
         Icon = Properties.Resources.Icon;
+        if (sav is SAV9ZA)
+            DGV.Columns.Add(new DataGridViewTextBoxColumn { ReadOnly = true, HeaderText = "Alpha Move" });
+        DGV.AllowUserToOrderColumns = true;
+
         WinFormsUtil.TranslateInterface(this, Main.CurrentLanguage);
         SAV = sav;
 
@@ -24,6 +31,8 @@ public partial class KChart : Form
         var strings = GameInfo.Strings;
         var species = strings.specieslist;
         abilities = strings.abilitylist;
+        moves = strings.movelist;
+        SpeciesNumberFormat = sav.Generation >= 9 ? "0000" : "000";
 
         DGV.Rows.Clear();
         for (ushort s = 1; s <= pt.MaxSpeciesID; s++)
@@ -54,35 +63,39 @@ public partial class KChart : Form
         var cells = row.Cells;
         int c = 0;
 
-        var bst = p.GetBaseStatTotal();
-        cells[c++].Value = species.ToString(pt.MaxSpeciesID > 999 ? "0000" : "000") + (form > 0 ? $"-{form:00}" : "");
+        var bst = p.BST;
+        cells[c++].Value = species.ToString(SpeciesNumberFormat) + (form > 0 ? $"-{form:00}" : string.Empty);
         cells[c++].Value = SpriteUtil.GetSprite(species, form, 0, 0, 0, false, Shiny.Never, SAV.Context);
         cells[c++].Value = name;
         cells[c++].Value = GetIsNative(p, species);
         cells[c].Style.BackColor = ColorUtil.ColorBaseStatTotal(bst);
+        cells[c].Style.ForeColor = Color.Black;
         cells[c++].Value = bst.ToString("000");
         cells[c++].Value = p.CatchRate.ToString("000");
         cells[c++].Value = TypeSpriteUtil.GetTypeSpriteWide(p.Type1, SAV.Generation);
         cells[c++].Value = p.Type1 == p.Type2 ? SpriteUtil.Spriter.Transparent : TypeSpriteUtil.GetTypeSpriteWide(p.Type2, SAV.Generation);
-        cells[c].Style.BackColor = ColorUtil.ColorBaseStat(p.HP);
-        cells[c++].Value = p.HP.ToString("000");
-        cells[c].Style.BackColor = ColorUtil.ColorBaseStat(p.ATK);
-        cells[c++].Value = p.ATK.ToString("000");
-        cells[c].Style.BackColor = ColorUtil.ColorBaseStat(p.DEF);
-        cells[c++].Value = p.DEF.ToString("000");
-        cells[c].Style.BackColor = ColorUtil.ColorBaseStat(p.SPA);
-        cells[c++].Value = p.SPA.ToString("000");
-        cells[c].Style.BackColor = ColorUtil.ColorBaseStat(p.SPD);
-        cells[c++].Value = p.SPD.ToString("000");
-        cells[c].Style.BackColor = ColorUtil.ColorBaseStat(p.SPE);
-        cells[c++].Value = p.SPE.ToString("000");
+        Stat(cells[c++], p.HP);
+        Stat(cells[c++], p.ATK);
+        Stat(cells[c++], p.DEF);
+        Stat(cells[c++], p.SPA);
+        Stat(cells[c++], p.SPD);
+        Stat(cells[c++], p.SPE);
         var abils = p.AbilityCount;
         cells[c++].Value = abilities[abils > 0 ? p.GetAbilityAtIndex(0) : 0];
         cells[c++].Value = abilities[abils > 1 ? p.GetAbilityAtIndex(1) : 0];
-        cells[c].Value   = abilities[abils > 2 ? p.GetAbilityAtIndex(2) : 0];
+        cells[c++].Value = abilities[abils > 2 ? p.GetAbilityAtIndex(2) : 0];
+        if (p is PersonalInfo9ZA za)
+            cells[c].Value = moves[za.AlphaMove];
 
         row.Height = SpriteUtil.Spriter.Height + 1;
         DGV.Rows.Add(row);
+
+        static void Stat(DataGridViewCell cell, int value)
+        {
+            cell.Style.ForeColor = Color.Black;
+            cell.Style.BackColor = ColorUtil.ColorBaseStat(value);
+            cell.Value = value.ToString("000");
+        }
     }
 
     private static bool GetIsNative(IPersonalInfo personalInfo, ushort s) => personalInfo switch
@@ -92,6 +105,7 @@ public partial class KChart : Form
         PersonalInfo8BDSP bs => bs.IsInDex,
         PersonalInfo8LA bs => bs.IsPresentInGame,
         PersonalInfo9SV sv => sv.IsInDex,
+        PersonalInfo9ZA za => za is { IsLumioseNative: true },
         _ => true,
     };
 
@@ -113,11 +127,6 @@ public partial class KChart : Form
             return false;
 
         // [0, 719]; always will be a bit in the array.
-        var offset = species >> 3;
-        var bitSet = PastGenAlolanNatives;
-        var bit = species & 7;
-        if ((bitSet[offset] & (1 << bit)) != 0)
-            return true;
-        return false;
+        return FlagUtil.GetFlag(PastGenAlolanNatives, species);
     }
 }

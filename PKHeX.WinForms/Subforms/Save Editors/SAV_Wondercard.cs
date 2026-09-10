@@ -65,7 +65,13 @@ public partial class SAV_Wondercard : Form
         DragEnter += Main_DragEnter;
         DragDrop += Main_DragDrop;
 
-        if (g == null)
+        if (Application.IsDarkModeEnabled)
+        {
+            WinFormsUtil.InvertToolStripIcons(mnuVSD.Items);
+            WinFormsUtil.InvertToolStripIcons(mnuDel.Items);
+        }
+
+        if (g is null)
             ClickView(pba[0], EventArgs.Empty);
         else
             ViewGiftData(g);
@@ -177,7 +183,7 @@ public partial class SAV_Wondercard : Form
         var data = File.ReadAllBytes(path);
         var ext = Path.GetExtension(path.AsSpan());
         var gift = MysteryGift.GetMysteryGift(data, ext);
-        if (gift == null)
+        if (gift is null)
         {
             WinFormsUtil.Error(MsgMysteryGiftInvalid, path);
             return;
@@ -187,7 +193,7 @@ public partial class SAV_Wondercard : Form
 
     private void B_Output_Click(object sender, EventArgs e)
     {
-        if (mg == null)
+        if (mg is null)
             return;
         WinFormsUtil.ExportMGDialog(mg);
     }
@@ -197,7 +203,7 @@ public partial class SAV_Wondercard : Form
         for (int i = 0; i < album.Length; i++)
         {
             var exist = album[i];
-            if (!exist.Empty)
+            if (!exist.IsEmpty)
                 continue;
             if (exist.Type != gift.Type)
                 continue;
@@ -209,8 +215,7 @@ public partial class SAV_Wondercard : Form
     // Mystery Gift RW (window<->sav)
     private void ClickView(object sender, EventArgs e)
     {
-        var pb = WinFormsUtil.GetUnderlyingControl<PictureBox>(sender);
-        if (pb == null)
+        if (!WinFormsUtil.TryGetUnderlying<PictureBox>(sender, out var pb))
             return;
         int index = pba.IndexOf(pb);
 
@@ -229,8 +234,7 @@ public partial class SAV_Wondercard : Form
             return;
         }
 
-        var pb = WinFormsUtil.GetUnderlyingControl<PictureBox>(sender);
-        if (pb == null)
+        if (!WinFormsUtil.TryGetUnderlying<PictureBox>(sender, out var pb))
             return;
         int index = pba.IndexOf(pb);
 
@@ -257,7 +261,7 @@ public partial class SAV_Wondercard : Form
             WinFormsUtil.Alert(MsgMysteryGiftSlotFail, $"{GameInfo.Strings.Item[533]} slot not valid.");
             return;
         }
-        gifts[index] = (DataMysteryGift)gift.Clone();
+        gifts[index] = gift.Clone();
         SetBackground(index, Drawing.PokeSprite.Properties.Resources.slotSet);
         SetGiftBoxes();
         SetCardID(gift.CardID);
@@ -265,19 +269,17 @@ public partial class SAV_Wondercard : Form
 
     private void ClickDelete(object sender, EventArgs e)
     {
-        var pb = WinFormsUtil.GetUnderlyingControl<PictureBox>(sender);
-        if (pb == null)
+        if (!WinFormsUtil.TryGetUnderlying<PictureBox>(sender, out var pb))
             return;
         int index = pba.IndexOf(pb);
 
-        var arr = Album[index].Data;
-        Array.Clear(arr, 0, arr.Length);
+        Album[index].Clear();
 
         // Shuffle blank card down
         int i = index;
         while (i < Album.Length - 1)
         {
-            if (Album[i + 1].Empty)
+            if (Album[i + 1].IsEmpty)
                 break;
             if (Album[i + 1].Type != Album[i].Type)
                 break;
@@ -313,7 +315,7 @@ public partial class SAV_Wondercard : Form
     {
         if (Cards is MysteryBlock4 s4)
         {
-            s4.IsDeliveryManActive = Album.Any(g => !g.Empty);
+            s4.IsDeliveryManActive = Album.Any(g => !g.IsEmpty);
             MysteryBlock4.UpdateSlotPGT(Album, SAV is SAV4HGSS);
             if (SAV is SAV4HGSS hgss)
                 hgss.LockCapsuleSlot = (PCD)Album[^1];
@@ -391,7 +393,7 @@ public partial class SAV_Wondercard : Form
                 return;
             }
             var gift = MysteryGift.GetMysteryGift(File.ReadAllBytes(path), Path.GetExtension(path));
-            if (gift == null)
+            if (gift is null)
             {
                 WinFormsUtil.Error(MsgMysteryGiftInvalid, path);
                 return;
@@ -418,9 +420,9 @@ public partial class SAV_Wondercard : Form
 
     private void ExportQRFromView()
     {
-        if (mg == null)
+        if (mg is null)
             return;
-        if (mg.Empty)
+        if (mg.IsEmpty)
         {
             WinFormsUtil.Alert(MsgMysteryGiftSlotNone);
             return;
@@ -431,7 +433,7 @@ public partial class SAV_Wondercard : Form
             return;
         }
 
-        Image qr = QREncode.GenerateQRCode(mg);
+        var qr = QREncode.GenerateQRCode(mg);
 
         string desc = $"({mg.Type}) {string.Join(Environment.NewLine, mg.GetDescription())}";
 
@@ -453,7 +455,7 @@ public partial class SAV_Wondercard : Form
 
         string[] types = Album.Select(g => g.Type).Distinct().ToArray();
         var gift = MysteryGift.GetMysteryGift(data);
-        if (gift == null)
+        if (gift is null)
             return;
 
         string giftType = gift.Type;
@@ -471,40 +473,47 @@ public partial class SAV_Wondercard : Form
     // ReSharper disable once AsyncVoidMethod
     private async void BoxSlot_MouseDown(object? sender, MouseEventArgs e)
     {
-        if (sender == null)
-            return;
-        switch (ModifierKeys)
-        {
-            case Keys.Control: ClickView(sender, e); return;
-            case Keys.Shift: ClickSet(sender, e); return;
-            case Keys.Alt: ClickDelete(sender, e); return;
-        }
-        var pb = sender as PictureBox;
-        if (pb?.Image == null)
-            return;
-
-        if (e.Button != MouseButtons.Left || e.Clicks != 1)
-            return;
-
-        int index = pba.IndexOf(pb);
-        var gift = Album[index];
-        if (gift.Empty)
-            return;
-
-        // Create Temp File to Drag
-        wc_slot = index;
-        Cursor.Current = Cursors.Hand;
-        string newfile = Path.Combine(Path.GetTempPath(), Util.CleanFileName(gift.FileName));
         try
         {
-            await File.WriteAllBytesAsync(newfile, gift.Write()).ConfigureAwait(true);
-            DoDragDrop(new DataObject(DataFormats.FileDrop, new[] { newfile }), DragDropEffects.Copy | DragDropEffects.Move);
+            if (sender is null)
+                return;
+            switch (ModifierKeys)
+            {
+                case Keys.Control: ClickView(sender, e); return;
+                case Keys.Shift: ClickSet(sender, e); return;
+                case Keys.Alt: ClickDelete(sender, e); return;
+            }
+            var pb = sender as PictureBox;
+            if (pb?.Image is null)
+                return;
+
+            if (e.Button != MouseButtons.Left || e.Clicks != 1)
+                return;
+
+            int index = pba.IndexOf(pb);
+            var gift = Album[index];
+            if (gift.IsEmpty)
+                return;
+
+            // Create Temp File to Drag
+            wc_slot = index;
+            Cursor.Current = Cursors.Hand;
+            string newfile = Path.Combine(Path.GetTempPath(), PathUtil.CleanFileName(gift.FileName));
+            try
+            {
+                File.WriteAllBytes(newfile, gift.Write());
+                DoDragDrop(new DataObject(DataFormats.FileDrop, new[] { newfile }), DragDropEffects.Copy | DragDropEffects.Move);
+            }
+            // Sometimes the drag-drop is canceled or ends up at a bad location. Don't bother recovering from an exception; just display a safe error message.
+            catch (Exception x)
+            { WinFormsUtil.Error("Drag & Drop Error", x); }
+            wc_slot = -1;
+            await DeleteAsync(newfile, 20_000).ConfigureAwait(false);
         }
-        // Sometimes the drag-drop is canceled or ends up at a bad location. Don't bother recovering from an exception; just display a safe error message.
-        catch (Exception x)
-        { WinFormsUtil.Error("Drag & Drop Error", x); }
-        wc_slot = -1;
-        await DeleteAsync(newfile, 20_000).ConfigureAwait(false);
+        catch
+        {
+            // Ignore.
+        }
     }
 
     private static async Task DeleteAsync(string path, int delay)
@@ -519,7 +528,7 @@ public partial class SAV_Wondercard : Form
 
     private void BoxSlot_DragDrop(object? sender, DragEventArgs? e)
     {
-        if (mg == null || sender is not PictureBox pb)
+        if (mg is null || sender is not PictureBox pb)
             return;
 
         int index = pba.IndexOf(pb);
@@ -543,7 +552,7 @@ public partial class SAV_Wondercard : Form
 
             byte[] data = File.ReadAllBytes(first);
             var gift = MysteryGift.GetMysteryGift(data, fi.Extension);
-            if (gift == null)
+            if (gift is null)
             { WinFormsUtil.Alert(MsgFileUnsupported, first); return; }
 
             ref var dest = ref Album[index];
@@ -557,7 +566,7 @@ public partial class SAV_Wondercard : Form
                 return;
             }
             SetBackground(index, Drawing.PokeSprite.Properties.Resources.slotSet);
-            dest = (DataMysteryGift)gift.Clone();
+            dest = gift.Clone();
 
             SetCardID(dest.CardID);
             ViewGiftData(dest);
@@ -584,7 +593,7 @@ public partial class SAV_Wondercard : Form
             if (s2 is PCD { CanConvertToPGT: true } && s1 is PGT)
             {
                 // Get first empty slot
-                var firstEmpty = Array.FindIndex(gifts, static z => z.Empty);
+                var firstEmpty = Array.FindIndex(gifts, static z => z.IsEmpty);
                 if ((uint)firstEmpty < dest)
                     dest = firstEmpty;
 
@@ -607,7 +616,7 @@ public partial class SAV_Wondercard : Form
         }
 
         // If data is present in both slots, just swap.
-        if (!s1.Empty)
+        if (!s1.IsEmpty)
         {
             // Swap
             (gifts[src], gifts[dest]) = (s1, s2);
@@ -617,7 +626,7 @@ public partial class SAV_Wondercard : Form
         // empty slot created, bubble this slot to the end of its list
         for (int i = src; i != dest; i++)
         {
-            if (gifts[i + 1].Empty)
+            if (gifts[i + 1].IsEmpty)
                 return i; // done bubbling
             (gifts[i + 1], gifts[i]) = (gifts[i], gifts[i + 1]);
         }
@@ -628,7 +637,7 @@ public partial class SAV_Wondercard : Form
     {
         if (e.AllowedEffect == (DragDropEffects.Copy | DragDropEffects.Link)) // external file
             e.Effect = DragDropEffects.Copy;
-        else if (e.Data != null) // within
+        else if (e.Data is not null) // within
             e.Effect = DragDropEffects.Move;
         Debug.WriteLine(e.Effect);
     }
@@ -752,7 +761,7 @@ public partial class SAV_Wondercard : Form
         foreach (var g in Album)
             g.GiftUsed = sender == B_UsedAll;
         SetGiftBoxes();
-        System.Media.SystemSounds.Asterisk.Play();
+        WinFormsUtil.Asterisk();
     }
 
     private void LB_Received_KeyDown(object sender, KeyEventArgs e)

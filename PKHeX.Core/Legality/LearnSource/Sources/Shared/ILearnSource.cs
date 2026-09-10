@@ -24,7 +24,7 @@ public interface ILearnSource
     /// <param name="form">Entity form</param>
     public Learnset GetLearnset(ushort species, byte form);
 
-    public void SetEncounterMoves(ushort species, byte form, int level, Span<ushort> init)
+    public void SetEncounterMoves(ushort species, byte form, byte level, Span<ushort> init)
     {
         var start = (init.LastIndexOfAnyExcept<ushort>(0) + 1) & 3;
         var learn = GetLearnset(species, form);
@@ -32,6 +32,7 @@ public interface ILearnSource
     }
 
     public ReadOnlySpan<ushort> GetEggMoves(ushort species, byte form) => [];
+    public bool GetIsEggMove(ushort species, byte form, ushort move) => false;
 
     public ReadOnlySpan<ushort> GetInheritMoves(ushort species, byte form)
     {
@@ -71,4 +72,17 @@ public interface ILearnSource<T> : ILearnSource where T : PersonalInfo
     /// <param name="pi">Result value</param>
     /// <returns>True if the <see cref="T"/> reference is a valid entity reference.</returns>
     public bool TryGetPersonal(ushort species, byte form, [NotNullWhen(true)] out T? pi);
+}
+
+/// <summary>
+/// Interface for learnsets with paired learn behavior.
+/// </summary>
+public interface ILearnSourceBonus
+{
+    /// <summary>
+    /// Gets the levelup learnset and other learnset for the given <see cref="species"/> and <see cref="form"/>.
+    /// </summary>
+    /// <param name="species">Entity species</param>
+    /// <param name="form">Entity form</param>
+    (Learnset Learn, Learnset Other) GetLearnsetAndOther(ushort species, byte form);
 }

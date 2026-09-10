@@ -8,25 +8,31 @@ namespace PKHeX.Core;
 /// </summary>
 public static class SpeciesName
 {
-    private const int LatestGeneration = PKX.Generation;
-
     /// <summary>
     /// Species name lists indexed by the <see cref="LanguageID"/> value.
     /// </summary>
     private static readonly string[][] SpeciesLang =
     [
         [], // 0 (unused, invalid)
-        Util.GetSpeciesList("ja"), // 1
-        Util.GetSpeciesList("en"), // 2
-        Util.GetSpeciesList("fr"), // 3
-        Util.GetSpeciesList("it"), // 4
-        Util.GetSpeciesList("de"), // 5
+        GetSpeciesList("ja"), // 1
+        GetSpeciesList("en"), // 2
+        GetSpeciesList("fr"), // 3
+        GetSpeciesList("it"), // 4
+        GetSpeciesList("de"), // 5
         [], // 6 (reserved for Gen3 KO?, unused)
-        Util.GetSpeciesList("es"), // 7
-        Util.GetSpeciesList("ko"), // 8
-        Util.GetSpeciesList("zh-Hans"), // 9 Simplified
-        Util.GetSpeciesList("zh-Hant"), // 10 Traditional
+        GetSpeciesList("es"), // 7
+        GetSpeciesList("ko"), // 8
+        GetSpeciesList("zh-Hans"), // 9 Simplified
+        GetSpeciesList("zh-Hant"), // 10 Traditional
+        GetSpeciesList("es-419"), // 11 Spanish 
     ];
+
+    /// <summary>
+    /// Gets a list of all Pokémon species names.
+    /// </summary>
+    /// <param name="language">Language of the Pokémon species names to select (e.g. "en", "fr", "jp", etc.)</param>
+    /// <returns>An array of strings whose indexes correspond to the IDs of each Pokémon species name.</returns>
+    private static string[] GetSpeciesList(string language) => Util.GetStringList("species", language);
 
     /// <summary>
     /// Egg name list indexed by the <see cref="LanguageID"/> value.
@@ -34,16 +40,17 @@ public static class SpeciesName
     /// <remarks>Indexing matches <see cref="SpeciesLang"/>.</remarks>
     private static string GetEggName(int language) => language switch
     {
-        1 => "タマゴ",
-        2 => "Egg",
-        3 => "Œuf",
-        4 => "Uovo",
-        5 => "Ei",
+        (int)LanguageID.Japanese => "タマゴ",
+        (int)LanguageID.English  => "Egg",
+        (int)LanguageID.French   => "Œuf",
+        (int)LanguageID.Italian  => "Uovo",
+        (int)LanguageID.German   => "Ei",
 
-        7 => "Huevo",
-        8 => "알",
-        9 => "蛋",
-        10 => "蛋",
+        (int)LanguageID.Spanish  => "Huevo",
+        (int)LanguageID.Korean   => "알",
+        (int)LanguageID.ChineseS => "蛋",
+        (int)LanguageID.ChineseT => "蛋",
+        (int)LanguageID.SpanishL => "Huevo",
         _ => string.Empty,
     };
 
@@ -52,7 +59,10 @@ public static class SpeciesName
     /// </summary>
     private static readonly Dictionary<string, ushort>.AlternateLookup<ReadOnlySpan<char>>[] SpeciesDict = GetDictionary(SpeciesLang);
 
-    private static Dictionary<string, ushort>.AlternateLookup<ReadOnlySpan<char>>[] GetDictionary(string[][] names)
+    /// <inheritdoc cref="SpeciesDict"/>
+    private static readonly Dictionary<string, ushort>.AlternateLookup<ReadOnlySpan<char>>[] SpeciesDictLower = GetDictionary(SpeciesLang, true);
+
+    private static Dictionary<string, ushort>.AlternateLookup<ReadOnlySpan<char>>[] GetDictionary(string[][] names, bool lower = false)
     {
         var result = new Dictionary<string, ushort>.AlternateLookup<ReadOnlySpan<char>>[names.Length];
         for (int i = 0; i < result.Length; i++)
@@ -61,7 +71,10 @@ public static class SpeciesName
             var capacity = Math.Max(speciesList.Length - 1, 0);
             var dict = new Dictionary<string, ushort>(capacity);
             for (ushort species = 1; species < speciesList.Length; species++)
-                dict[speciesList[species]] = species;
+            {
+                var key = speciesList[species];
+                dict[lower ? key.ToLowerInvariant() : key] = species;
+            }
             result[i] = dict.GetAlternateLookup<ReadOnlySpan<char>>();
         }
         return result;
@@ -151,7 +164,7 @@ public static class SpeciesName
         Span<char> result = stackalloc char[nick.Length];
 
         // All names are uppercase.
-        nick.AsSpan().ToUpperInvariant(result);
+        nick.ToUpperInvariant(result);
         if (language == (int)LanguageID.French)
             StringConverter4Util.StripDiacriticsFR4(result); // strips accents on E and I
 
@@ -238,11 +251,12 @@ public static class SpeciesName
     /// </summary>
     /// <param name="species">National Dex number of the Pokémon. Should be 0 if an egg.</param>
     /// <param name="nickname">Current name</param>
-    /// <param name="generation">Generation specific formatting option</param>
+    /// <param name="context">Generation specific formatting option</param>
     /// <returns>True if it does not match any language name, False if not nicknamed</returns>
-    public static bool IsNicknamedAnyLanguage(ushort species, ReadOnlySpan<char> nickname, byte generation = LatestGeneration)
+    public static bool IsNicknamedAnyLanguage(ushort species, ReadOnlySpan<char> nickname, EntityContext context = Latest.Context)
     {
-        var langs = Language.GetAvailableGameLanguages(generation);
+        var langs = Language.GetAvailableGameLanguages(context);
+        var generation = context.Generation;
         foreach (var language in langs)
         {
             if (!IsNicknamed(species, nickname, language, generation))
@@ -259,7 +273,7 @@ public static class SpeciesName
     /// <param name="language">Language ID of the Pokémon</param>
     /// <param name="generation">Generation specific formatting option</param>
     /// <returns>True if it does not match the language name, False if not nicknamed (matches).</returns>
-    public static bool IsNicknamed(ushort species, ReadOnlySpan<char> nickname, int language, byte generation = LatestGeneration)
+    public static bool IsNicknamed(ushort species, ReadOnlySpan<char> nickname, int language, byte generation = Latest.Generation)
     {
         var expect = GetSpeciesNameGeneration(species, language, generation);
         return !nickname.SequenceEqual(expect);
@@ -271,11 +285,12 @@ public static class SpeciesName
     /// <param name="species">National Dex number of the Pokémon. Should be 0 if an egg.</param>
     /// <param name="priorityLanguage">Language ID with a higher priority</param>
     /// <param name="nickname">Current name</param>
-    /// <param name="generation">Generation specific formatting option</param>
+    /// <param name="context">Generation specific formatting option</param>
     /// <returns>Language ID if it does not match any language name, -1 if no matches</returns>
-    public static int GetSpeciesNameLanguage(ushort species, int priorityLanguage, ReadOnlySpan<char> nickname, byte generation = LatestGeneration)
+    public static int GetSpeciesNameLanguage(ushort species, int priorityLanguage, ReadOnlySpan<char> nickname, EntityContext context = Latest.Context)
     {
-        var langs = Language.GetAvailableGameLanguages(generation);
+        var langs = Language.GetAvailableGameLanguages(context);
+        var generation = context.Generation;
         var priorityIndex = langs.IndexOf((byte)priorityLanguage);
         if (priorityIndex != -1)
         {
@@ -292,11 +307,12 @@ public static class SpeciesName
     /// </summary>
     /// <param name="species">National Dex number of the Pokémon. Should be 0 if an egg.</param>
     /// <param name="nickname">Current name</param>
-    /// <param name="generation">Generation specific formatting option</param>
+    /// <param name="context">Generation specific formatting option</param>
     /// <returns>Language ID if it does not match any language name, -1 if no matches</returns>
-    public static int GetSpeciesNameLanguage(ushort species, ReadOnlySpan<char> nickname, byte generation = LatestGeneration)
+    public static int GetSpeciesNameLanguage(ushort species, ReadOnlySpan<char> nickname, EntityContext context = Latest.Context)
     {
-        var langs = Language.GetAvailableGameLanguages(generation);
+        var langs = Language.GetAvailableGameLanguages(context);
+        var generation = context.Generation;
         return GetSpeciesNameLanguage(species, nickname, generation, langs);
     }
 
@@ -320,12 +336,34 @@ public static class SpeciesName
     /// <returns>True if the species was found, False if not</returns>
     public static bool TryGetSpecies(ReadOnlySpan<char> speciesName, int language, out ushort species)
     {
-        return SpeciesDict[language].TryGetValue(speciesName, out species);
+        if (language < SpeciesDict.Length)
+            return SpeciesDict[language].TryGetValue(speciesName, out species);
+        species = 0;
+        return false;
     }
 
-    /// <inheritdoc cref="TryGetSpecies(ReadOnlySpan{char}, int, out ushort)"/>
-    public static bool TryGetSpecies(string speciesName, int language, out ushort species)
+    public static bool TryGetSpeciesAnyLanguage(ReadOnlySpan<char> speciesName, out ushort species, EntityContext context = Latest.Context)
     {
-        return SpeciesDict[language].TryGetValue(speciesName, out species);
+        foreach (var language in Language.GetAvailableGameLanguages(context))
+        {
+            if (SpeciesDict[language].TryGetValue(speciesName, out species))
+                return true;
+        }
+        species = 0;
+        return false;
+    }
+
+    public static bool TryGetSpeciesAnyLanguageCaseInsensitive(ReadOnlySpan<char> speciesName, out ushort species, EntityContext context = Latest.Context)
+    {
+        Span<char> lowercase = stackalloc char[speciesName.Length];
+        speciesName.ToLowerInvariant(lowercase);
+
+        foreach (var language in Language.GetAvailableGameLanguages(context))
+        {
+            if (SpeciesDictLower[language].TryGetValue(lowercase, out species))
+                return true;
+        }
+        species = 0;
+        return false;
     }
 }

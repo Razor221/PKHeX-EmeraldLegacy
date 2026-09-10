@@ -39,11 +39,11 @@ public readonly record struct EvolutionMethod(ushort Species, ushort Argument, b
     /// <param name="lvl">Current level</param>
     /// <param name="levelMin">Minimum level to sanity check with</param>
     /// <param name="skipChecks">Option to skip some comparisons to return a 'possible' evolution.</param>
-    /// <param name="tweak"></param>
+    /// <param name="tweak">Evolution rule tweaks to apply when checking.</param>
     /// <returns>True if the evolution criteria is valid.</returns>
     public EvolutionCheckResult Check(PKM pk, byte lvl, byte levelMin, bool skipChecks, EvolutionRuleTweak tweak)
     {
-        if (!Method.IsLevelUpRequired())
+        if (!Method.IsLevelUpRequired)
             return ValidNotLevelUp(pk, skipChecks);
 
         var chk = IsLevelUpMethodSecondarySatisfied(pk, skipChecks);
@@ -59,7 +59,7 @@ public readonly record struct EvolutionMethod(ushort Species, ushort Argument, b
             return InsufficientLevel;
         if (lvl < levelMin + LevelUp && !skipChecks)
         {
-            if (lvl == 100 && tweak.AllowLevelUpEvolution100)
+            if (lvl == Experience.MaxLevel && tweak.AllowLevelUpEvolution100)
                 return Valid;
             return InsufficientLevel;
         }
@@ -82,10 +82,10 @@ public readonly record struct EvolutionMethod(ushort Species, ushort Argument, b
         // Version checks come in pairs, check for any pair match
         LevelUpVersion or LevelUpVersionDay or LevelUpVersionNight when (((byte)pk.Version & 1) != (Argument & 1) && pk.IsUntraded) => skipChecks ? Valid : VisitVersion,
 
-        LevelUpKnowMoveEC100  when pk.EncryptionConstant % 100 != 0 => skipChecks ? Valid : WrongEC,
-        LevelUpKnowMoveECElse when pk.EncryptionConstant % 100 == 0 => skipChecks ? Valid : WrongEC,
-        LevelUpInBattleEC100  when pk.EncryptionConstant % 100 != 0 => skipChecks ? Valid : WrongEC,
-        LevelUpInBattleECElse when pk.EncryptionConstant % 100 == 0 => skipChecks ? Valid : WrongEC,
+        LevelUpKnowMoveEC100  when !EvolutionRestrictions.IsEvolvedSpeciesFormRare(pk.EncryptionConstant) => skipChecks ? Valid : WrongEC,
+        LevelUpKnowMoveECElse when  EvolutionRestrictions.IsEvolvedSpeciesFormRare(pk.EncryptionConstant) => skipChecks ? Valid : WrongEC,
+        LevelUpInBattleEC100  when !EvolutionRestrictions.IsEvolvedSpeciesFormRare(pk.EncryptionConstant) => skipChecks ? Valid : WrongEC,
+        LevelUpInBattleECElse when  EvolutionRestrictions.IsEvolvedSpeciesFormRare(pk.EncryptionConstant) => skipChecks ? Valid : WrongEC,
 
         _ => Valid,
     };

@@ -5,9 +5,8 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 4 Trade Encounter with a fixed PID value, met location, and version.
 /// </summary>
-public sealed record EncounterTrade4RanchGift
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PK4>, IFatefulEncounterReadOnly, IFixedTrainer,
-        IMoveset, IFixedGender, IFixedNature, IMetLevel
+public sealed record EncounterTrade4RanchGift : IEncounterable, IEncounterMatch, IEncounterConvertible<PK4>,
+    IFatefulEncounterReadOnly, IFixedTrainer, IMoveset, IFixedGender, IFixedNature, IMetLevel, ITrainerID32ReadOnly
 {
     public byte Generation => 4;
     public EntityContext Context => EntityContext.Gen4;
@@ -36,9 +35,9 @@ public sealed record EncounterTrade4RanchGift
 
     public bool FatefulEncounter { get; }
     public required Moveset Moves { get; init; }
-    public const ushort TID16 = 1000;
+    public ushort TID16 => 1000;
     public required ushort SID16 { get; init; }
-    private uint ID32 => (uint)(TID16 | (SID16 << 16));
+    public uint ID32 => (uint)(TID16 | (SID16 << 16));
     public required byte OTGender { get; init; }
     public required byte Gender { get; init; }
     public required AbilityPermission Ability { get; init; }
@@ -52,7 +51,7 @@ public sealed record EncounterTrade4RanchGift
         4 => "GIULIA",
         5 => "EUKALIA",
         7 => "Eulalia",
-        _ => "",
+        _ => string.Empty,
     };
 
     private const string _name = "My Pokémon Ranch - Trade";
@@ -86,8 +85,8 @@ public sealed record EncounterTrade4RanchGift
 
     public PK4 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.DP[Species];
         var pk = new PK4
         {
@@ -102,13 +101,13 @@ public sealed record EncounterTrade4RanchGift
 
             ID32 = ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = OTGender,
-            OriginalTrainerName = GetTrainerName(lang),
+            OriginalTrainerName = GetTrainerName(language),
 
             OriginalTrainerFriendship = pi.BaseFriendship,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
 
             HandlingTrainerName = tr.OT,
             HandlingTrainerGender = tr.Gender,
@@ -130,14 +129,40 @@ public sealed record EncounterTrade4RanchGift
         return pk;
     }
 
-    private void SetPINGA(PK4 pk, EncounterCriteria criteria)
+    private void SetPINGA(PK4 pk, in EncounterCriteria criteria)
     {
         var pid = FatefulEncounter ? Util.Rand32() : PID;
         pk.PID = pid;
         pk.Nature = (Nature)(pid % 25);
         pk.Gender = Gender;
         pk.RefreshAbility((int)(pid % 2));
-        criteria.SetRandomIVs(pk);
+        pk.IV32 = GetIVs(criteria);
+    }
+
+    private static uint GetIVs(EncounterCriteria criteria)
+    {
+        if (criteria.IsSpecifiedIVsAll())
+        {
+            // Sanity check that they are possible.
+            var combined = criteria.GetCombinedIVs();
+            if (MRNGReversal.HasSeeds(combined))
+                return combined;
+        }
+
+        // Else, apply something random within plausible criteria.
+        uint seed = Util.Rand32();
+        var filterIVs = criteria.IsSpecifiedIVs(2);
+        while (true)
+        {
+            var iv32 = MRNG.GetSequentialIVs(seed);
+            seed = MRNG.Next(seed);
+
+            if (criteria.IsSpecifiedHiddenPower() && !criteria.IsSatisfiedHiddenPower(iv32))
+                continue;
+            if (filterIVs && !criteria.IsSatisfiedIVs(iv32))
+                continue;
+            return iv32;
+        }
     }
 
     #endregion
@@ -160,7 +185,7 @@ public sealed record EncounterTrade4RanchGift
             return false;
         if (pk.OriginalTrainerGender != OTGender)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (pk.IsEgg)
             return false;
@@ -191,14 +216,6 @@ public sealed record EncounterTrade4RanchGift
         if (FatefulEncounter)
             return !pk.IsShiny;
         return PID == pk.EncryptionConstant;
-    }
-
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = EggLocation;
-        if (pk is PB8)
-            expect = Locations.Default8bNone;
-        return pk.EggLocation == expect;
     }
 
     public EncounterMatchRating GetMatchRating(PKM pk) => EncounterMatchRating.Match;

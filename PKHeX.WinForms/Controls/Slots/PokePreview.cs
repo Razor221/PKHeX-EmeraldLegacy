@@ -1,28 +1,15 @@
 using System;
-using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
 using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
 using PKHeX.Core;
+using PKHeX.Drawing.Misc;
+using PKHeX.Drawing.PokeSprite;
 
 namespace PKHeX.WinForms.Controls;
 
-public partial class PokePreview : Form
+public sealed partial class PokePreview : Form
 {
-    /// <summary> Minimum width to display the form. </summary>
-    private readonly int InitialWidth;
-
-    private readonly int InitialNameWidth;
-
-    private const int interiorMargin = 4; // 2x pixel border on each side
-
-    public PokePreview()
-    {
-        InitializeComponent();
-        InitialWidth = Width;
-        InitialNameWidth = L_Name.Width;
-    }
-
     private static readonly Image[] GenderImages =
     [
         Properties.Resources.gender_0,
@@ -30,105 +17,313 @@ public partial class PokePreview : Form
         Properties.Resources.gender_2,
     ];
 
-    public void Populate(PKM pk)
+    private readonly List<RenderTextLine> TextLinesPre = [];
+    private readonly List<RenderMoveLine> MoveLines = [];
+    private readonly List<RenderTextLine> TextLinesHint = [];
+    private readonly List<RenderTextLine> TextLinesEncounter = [];
+
+    private string HeaderName = string.Empty;
+    private Image? HeaderBall;
+    private Image? HeaderGender;
+
+    private const int Border = 1;
+    private const int HeaderTopPadding = 4;
+    private const int HeaderBottomPadding = 4;
+    private const int HeaderLeftPadding = 4;
+    private const int HeaderRightPadding = 4;
+    private const int HeaderIconGap = 2;
+
+    private const int BodyTopPadding = 2;
+    private const int BodyBottomPadding = 2;
+    private const int BodyLeftPadding = 4;
+    private const int BodyRightPadding = 4;
+
+    private const int TextSectionTopPadding = 2;
+    private const int TextSectionBottomPadding = 2;
+    private const int TextLineSpacing = 1;
+
+    private const int MoveIconTextGap = 2;
+    private const int MoveSectionTopPadding = 4;
+    private const int MoveSectionBottomPadding = 8;
+
+    private const int IconSize = 24;
+
+    private static Color IllegalTextColor => WinFormsUtil.ColorWarn;
+
+    public PokePreview()
     {
-        var la = new LegalityAnalysis(pk);
-        int width = PopulateHeader(pk);
-        PopulateMoves(pk, la, ref width);
-        PopulateText(pk, la, width);
+        InitializeComponent();
+
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        UpdateStyles();
     }
 
-    private int PopulateHeader(PKM pk)
+    public void Populate(PKM pk, in BattleTemplateExportSettings settings, in LegalityLocalizationContext ctx)
     {
-        var name = GetNameTitle(pk);
-        var size = MeasureSize(name, L_Name.Font);
-        L_Name.Width = Math.Max(InitialNameWidth, size.Width);
-        L_Name.Text = name;
+        var main = Main.Settings;
+        HeaderName = GetNameTitle(pk, settings);
 
-        PopulateBall(pk);
-        PopulateGender(pk);
+        if (pk.Format > 2)
+            HeaderBall = GetBallImage(pk);
+        else
+            HeaderBall = null;
 
-        var width = L_Name.Width + PB_Ball.Width + PB_Ball.Margin.Horizontal + PB_Gender.Width + PB_Gender.Margin.Horizontal + interiorMargin;
-        return Math.Max(InitialWidth, width);
+        if (pk.Format != 1 || main.EntityEditor.ShowGenderGen1)
+            HeaderGender = GetGenderImage(pk);
+        else
+            HeaderGender = null;
+
+        TextLinesPre.Clear();
+        MoveLines.Clear();
+        TextLinesHint.Clear();
+        TextLinesEncounter.Clear();
+
+        var hover = Main.Settings.Hover;
+        var (before, mid, after) = GetBeforeAndAfter(pk, ctx, settings);
+
+        AppendTextSection(TextLinesPre, before, hover.PreviewShowPaste, ForeColor);
+        BuildMoves(pk, ctx.Analysis, settings);
+        AppendTextSection(TextLinesHint, mid, hover.HoverSlotShowLegalityHint, IllegalTextColor);
+        AppendTextSection(TextLinesEncounter, after, hover.HoverSlotShowEncounter, ForeColor);
+
+        ApplySize();
+        Invalidate();
     }
 
-    private static string GetNameTitle(PKM pk)
+    private void BuildMoves(PKM pk, LegalityAnalysis la, in BattleTemplateExportSettings settings)
     {
-        var nick = pk.Nickname;
-        var all = GameInfo.Strings.Species;
-        var species = pk.Species;
-        if (species >= all.Count)
-            return nick;
-        var expect = all[species];
-        if (nick.Equals(expect, StringComparison.OrdinalIgnoreCase))
-            return nick;
-        return $"{nick} ({expect})";
-    }
-
-    private void PopulateBall(PKM pk)
-    {
-        var ball = (byte)Ball.Poke;
-        if (pk.Format >= 3)
-            ball = pk.Ball;
-        PB_Ball.Image = Drawing.PokeSprite.SpriteUtil.GetBallSprite(ball);
-    }
-
-    private void PopulateGender(PKM pk)
-    {
-        if (pk.Format == 1)
-        {
-            PB_Gender.Image = null;
+        if (pk.MoveCount == 0)
             return;
-        }
 
-        var gender = pk.Gender;
-        if (gender >= GenderImages.Length)
-            gender = 2;
-        PB_Gender.Image = GenderImages[gender];
-    }
-
-    private void PopulateMoves(PKM pk, LegalityAnalysis la, ref int width)
-    {
         var context = pk.Context;
-        var names = GameInfo.Strings.movelist;
-        var check = la.Info.Moves;
-        var w1 = Move1.Populate(pk, pk.Move1, context, names, check[0].Valid);
-        var w2 = Move2.Populate(pk, pk.Move2, context, names, check[1].Valid);
-        var w3 = Move3.Populate(pk, pk.Move3, context, names, check[2].Valid);
-        var w4 = Move4.Populate(pk, pk.Move4, context, names, check[3].Valid);
+        var strings = settings.Localization.Strings;
+        var names = strings.movelist;
+        var checks = la.Info.Moves;
 
-        var maxWidth = Math.Max(w1, Math.Max(w2, Math.Max(w3, w4)));
-        width = Math.Max(width, maxWidth + Move1.Margin.Horizontal + interiorMargin);
+        AppendMoveLine(pk, strings, names, context, pk.Move1, checks[0].Valid);
+        AppendMoveLine(pk, strings, names, context, pk.Move2, checks[1].Valid);
+        AppendMoveLine(pk, strings, names, context, pk.Move3, checks[2].Valid);
+        AppendMoveLine(pk, strings, names, context, pk.Move4, checks[3].Valid);
     }
 
-    private void PopulateText(PKM pk, LegalityAnalysis la, int width)
+    private void AppendMoveLine(PKM pk, GameStrings strings, ReadOnlySpan<string> names, EntityContext context, ushort move, bool valid)
     {
-        var (stats, enc) = GetStatsString(pk, la);
-        var settings = Main.Settings.Hover;
-
-        bool hasMoves = pk.MoveCount != 0;
-        FLP_Moves.Visible = hasMoves;
-        var height = FLP_List.Top + interiorMargin;
-        if (hasMoves)
-            height += FLP_Moves.Height + FLP_Moves.Margin.Vertical;
-        ToggleLabel(L_Stats, stats, settings.PreviewShowPaste, ref width, ref height);
-        ToggleLabel(L_Etc, enc, settings.HoverSlotShowEncounter, ref width, ref height);
-        Size = new Size(width, height);
-    }
-
-    private static void ToggleLabel(Control display, string text, bool visible, ref int width, ref int height)
-    {
-        if (!visible)
-        {
-            display.Visible = false;
+        if (move == 0 || move >= names.Length)
             return;
+
+        byte type = MoveInfo.GetType(move, context);
+        var name = names[move];
+        if (move == (int)PKHeX.Core.Move.HiddenPower && pk.Context is not EntityContext.Gen8a)
+        {
+            if (HiddenPower.TryGetTypeIndex(pk.HPType, out type))
+                name = $"{name} ({strings.types[type]}) [{pk.HPPower}]";
         }
 
-        var size = MeasureSize(text, display.Font);
-        width = Math.Max(width, display.Margin.Horizontal + size.Width);
-        height += size.Height + display.Margin.Vertical;
-        display.Text = text;
-        display.Visible = true;
+        var image = TypeSpriteUtil.GetTypeSpriteIconSmall(type);
+        var color = valid ? ForeColor : IllegalTextColor;
+        MoveLines.Add(new RenderMoveLine(name, image, color));
+    }
+
+    private static void AppendTextSection(List<RenderTextLine> list, ReadOnlySpan<char> text, bool visible, Color color)
+    {
+        if (!visible || text.Length == 0)
+            return;
+
+        int i = 0;
+        var lines = text.EnumerateLines();
+        foreach (var line in lines)
+        {
+            var topPadding = i == 0 ? TextSectionTopPadding : TextLineSpacing;
+            const int bottomPadding = 0;
+            list.Add(new RenderTextLine(line.ToString(), color, topPadding, bottomPadding));
+            i++;
+        }
+
+        var last = list[^1];
+        list[^1] = last with { BottomPadding = TextSectionBottomPadding };
+    }
+
+    private void ApplySize()
+    {
+        var width = GetPreferredWidth();
+        var height = GetPreferredHeight();
+        var size = new Size(width, height);
+        if (Size != size)
+            Size = size;
+    }
+
+    private int GetPreferredWidth()
+    {
+        var width = 0;
+
+        var nameSize = MeasureSize(HeaderName, Font);
+        var headerWidth = Border + HeaderLeftPadding + nameSize.Width + HeaderRightPadding + Border;
+        if (HeaderBall != null)
+            headerWidth += IconSize + HeaderIconGap;
+        if (HeaderGender != null)
+            headerWidth += IconSize + HeaderIconGap;
+
+        width = Math.Max(width, headerWidth);
+
+        foreach (var move in MoveLines)
+        {
+            var size = MeasureSize(move.Text, Font);
+            var lineWidth = Border + BodyLeftPadding + IconSize + MoveIconTextGap + size.Width + BodyRightPadding + Border;
+            width = Math.Max(width, lineWidth);
+        }
+        foreach (var line in TextLinesPre)
+        {
+            var size = MeasureSize(line.Text, Font);
+            var lineWidth = Border + BodyLeftPadding + size.Width + BodyRightPadding + Border;
+            width = Math.Max(width, lineWidth);
+        }
+        foreach (var line in TextLinesHint)
+        {
+            var size = MeasureSize(line.Text, Font);
+            var lineWidth = Border + BodyLeftPadding + size.Width + BodyRightPadding + Border;
+            width = Math.Max(width, lineWidth);
+        }
+        foreach (var line in TextLinesEncounter)
+        {
+            var size = MeasureSize(line.Text, Font);
+            var lineWidth = Border + BodyLeftPadding + size.Width + BodyRightPadding + Border;
+            width = Math.Max(width, lineWidth);
+        }
+
+        return width;
+    }
+
+    private int GetPreferredHeight()
+    {
+        var height = Border;
+        height += HeaderTopPadding + IconSize + HeaderBottomPadding;
+        height += Border;
+
+        height += BodyTopPadding;
+
+        if (MoveLines.Count != 0)
+        {
+            height += MoveSectionTopPadding;
+            height += MoveLines.Count * IconSize;
+            height += MoveSectionBottomPadding;
+        }
+
+        foreach (var line in TextLinesPre)
+        {
+            height += line.TopPadding;
+            var textHeight = Math.Max(Font.Height, MeasureSize(line.Text, Font).Height);
+            height += textHeight;
+            height += line.BottomPadding;
+        }
+        foreach (var line in TextLinesHint)
+        {
+            height += line.TopPadding;
+            var textHeight = Math.Max(Font.Height, MeasureSize(line.Text, Font).Height);
+            height += textHeight;
+            height += line.BottomPadding;
+        }
+        foreach (var line in TextLinesEncounter)
+        {
+            height += line.TopPadding;
+            var textHeight = Math.Max(Font.Height, MeasureSize(line.Text, Font).Height);
+            height += textHeight;
+            height += line.BottomPadding;
+        }
+
+        height += BodyBottomPadding;
+        height += Border;
+
+        return height;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+
+        var g = e.Graphics;
+        g.Clear(BackColor);
+
+        var outer = new Rectangle(0, 0, Width - 1, Height - 1);
+        g.DrawRectangle(SystemPens.ControlDark, outer);
+
+        const int headerTop = Border;
+        const int headerHeight = HeaderTopPadding + IconSize + HeaderBottomPadding;
+        const int headerBottom = headerTop + headerHeight;
+        g.DrawLine(SystemPens.ControlDark, Border, headerBottom, Width - Border - 1, headerBottom);
+
+        DrawHeader(g, headerTop);
+
+        var y = headerBottom + BodyTopPadding;
+        y = DrawTextLines(TextLinesPre, g, y);
+        y = DrawMoves(g, y);
+        y = DrawTextLines(TextLinesHint, g, y);
+
+        if (TextLinesEncounter.Count != 0)
+        {
+            g.DrawLine(SystemPens.ControlDark, Border, y, Width - Border - 1, y);
+            y += Border;
+            _ = DrawTextLines(TextLinesEncounter, g, y);
+        }
+    }
+
+    private void DrawHeader(Graphics g, int headerTop)
+    {
+        var y = headerTop + HeaderTopPadding;
+        var x = Border + HeaderLeftPadding;
+
+        if (HeaderBall is not null)
+        {
+            g.DrawImage(HeaderBall, new Rectangle(x, y, IconSize, IconSize));
+            x += IconSize + HeaderIconGap;
+        }
+
+        var textRect = new Rectangle(x, y, Math.Max(0, Width - x - Border - HeaderRightPadding - IconSize - HeaderIconGap), IconSize);
+        TextRenderer.DrawText(g, HeaderName, Font, textRect, ForeColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+
+        // Gender displayed at right edge.
+        if (HeaderGender is not null)
+        {
+            var genderX = Width - Border - HeaderRightPadding - IconSize;
+            g.DrawImage(HeaderGender, new Rectangle(genderX, y, IconSize, IconSize));
+        }
+    }
+
+    private int DrawMoves(Graphics g, int y)
+    {
+        if (MoveLines.Count == 0)
+            return y;
+
+        const int x = Border + BodyLeftPadding;
+        y += MoveSectionTopPadding;
+        foreach (var line in MoveLines)
+        {
+            if (line.Icon is not null)
+                g.DrawImage(line.Icon, new Rectangle(x, y, IconSize, IconSize));
+
+            var textRect = new Rectangle(x + IconSize + MoveIconTextGap, y, Math.Max(0, Width - (x + IconSize + MoveIconTextGap) - Border - BodyRightPadding), IconSize);
+            TextRenderer.DrawText(g, line.Text, Font, textRect, line.Color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            y += IconSize;
+        }
+        y += MoveSectionBottomPadding;
+
+        return y;
+    }
+
+    private int DrawTextLines(List<RenderTextLine> list, Graphics g, int y)
+    {
+        const int x = Border + BodyLeftPadding;
+        var textWidth = Math.Max(0, Width - x - Border - BodyRightPadding);
+
+        foreach (var line in list)
+        {
+            y += line.TopPadding;
+            var height = Math.Max(Font.Height, MeasureSize(line.Text, Font).Height);
+            var rect = new Rectangle(x, y, textWidth, height);
+            TextRenderer.DrawText(g, line.Text, Font, rect, line.Color, TextFormatFlags.Left | TextFormatFlags.NoPadding);
+            y += height + line.BottomPadding;
+        }
+
+        return y;
     }
 
     public static Size MeasureSize(ReadOnlySpan<char> text, Font font)
@@ -137,91 +332,156 @@ public partial class PokePreview : Form
         return TextRenderer.MeasureText(text, font, new Size(), flags);
     }
 
-    private static (string Detail, string Encounter) GetStatsString(PKM pk, LegalityAnalysis la)
+    private static string GetNameTitle(PKM pk, in BattleTemplateExportSettings settings)
     {
-        var setText = SummaryPreviewer.GetPreviewText(pk, la);
-        var sb = new StringBuilder();
-        var lines = setText.AsSpan().EnumerateLines();
-        if (!lines.MoveNext())
-            throw new ArgumentException("Invalid text format", nameof(pk));
+        var nick = pk.Nickname;
+        var strings = settings.Localization.Strings;
+        var all = strings.Species;
+        var species = pk.Species;
+        if (species >= all.Count)
+            return nick;
+        var expect = all[species];
+        if (settings.IsTokenInExport(BattleTemplateToken.Nickname))
+            return expect;
 
-        var first = lines.Current;
-        var itemIndex = first.IndexOf('@');
-        if (itemIndex != -1) // Held Item
-        {
-            var remaining = first[(itemIndex + 2)..];
-            if (remaining[^1] == ')')
-                remaining = remaining[..^3]; // lop off gender
-            var item = remaining.Trim();
-            if (item.Length != 0)
-                sb.AppendLine($"Held Item: {item}");
-        }
+        if (nick.Equals(expect, StringComparison.OrdinalIgnoreCase))
+            return nick;
+        return $"{nick} ({expect})";
+    }
 
+    private static Bitmap GetBallImage(PKM pk)
+    {
+        var ball = (byte)Ball.Poke;
+        if (pk.Format >= 3)
+            ball = pk.Ball;
+        return SpriteUtil.GetBallSprite(ball);
+    }
+
+    private static Image? GetGenderImage(PKM pk)
+    {
+        if (pk.Format == 1)
+            return null;
+
+        var gender = pk.Gender;
+        if (gender >= GenderImages.Length)
+            gender = 2;
+        return GenderImages[gender];
+    }
+
+    private static (string Before, string Middle, string After) GetBeforeAndAfter(PKM pk, in LegalityLocalizationContext la, in BattleTemplateExportSettings settings)
+    {
+        var order = settings.Order;
+        // Bifurcate the order into two sections; split via Moves.
+        var moveIndex = settings.GetTokenIndex(BattleTemplateToken.Moves);
+        var before = moveIndex == -1 ? order : order[..moveIndex];
+        var after = moveIndex == -1 ? default : order[(moveIndex + 1)..];
+        if (before.Length > 0 && before[0] == BattleTemplateToken.FirstLine)
+            before = before[1..]; // remove first line token; trust that users don't randomly move it lower in the list.
+
+        var start = SummaryPreviewer.GetPreviewText(pk, settings with { Order = before });
+        var end = SummaryPreviewer.GetPreviewText(pk, settings with { Order = after });
+        if (settings.IsTokenInExport(BattleTemplateToken.IVs, before))
+            TryAppendOtherStats(pk, ref start, settings);
+        else if (settings.IsTokenInExport(BattleTemplateToken.IVs, after))
+            TryAppendOtherStats(pk, ref end, settings);
+
+        var mid = "";
+        if (Main.Settings.Hover.HoverSlotShowLegalityHint)
+            mid = SummaryPreviewer.AppendLegalityHint(la, mid);
+
+        if (Main.Settings.Hover.HoverSlotShowEncounter)
+            end = SummaryPreviewer.AppendEncounterInfo(la, end);
+
+        return (start, mid, end);
+    }
+
+    public static void TryAppendOtherStats(PKM pk, ref string line, in BattleTemplateExportSettings settings)
+    {
         if (pk is IGanbaru g)
-            AddGanbaru(g, sb);
+            AppendGanbaru(g, ref line, settings);
         if (pk is IAwakened a)
-            AddAwakening(a, sb);
-
-        while (lines.MoveNext())
-        {
-            var line = lines.Current;
-            if (IsMoveLine(line))
-            {
-                while (lines.MoveNext())
-                {
-                    if (!IsMoveLine(lines.Current))
-                        break;
-                }
-                break;
-            }
-            sb.Append(line).AppendLine();
-        }
-
-        var detail = sb.ToString();
-        sb.Clear();
-        while (lines.MoveNext())
-        {
-            var line = lines.Current;
-            sb.Append(line).AppendLine();
-        }
-        var enc = sb.ToString();
-        return (detail.TrimEnd(), enc.TrimEnd());
-
-        static bool IsMoveLine(ReadOnlySpan<char> line) => line.Length != 0 && line[0] == '-';
+            AppendAwakening(a, ref line, settings);
+        if (!settings.IsTokenInExport(BattleTemplateToken.SPs) && settings.IncludeChampionsStatPoints)
+            AppendChampionsSP(pk, ref line, settings);
     }
 
-    private static void AddGanbaru(IGanbaru g, StringBuilder sb)
+    private static void AppendChampionsSP(PKM pk, ref string line, in BattleTemplateExportSettings settings)
     {
-        Span<byte> gvs = stackalloc byte[6];
-        g.GetGVs(gvs);
-        TryAdd<byte>(sb, "GVs", gvs);
+        Span<int> EVs = stackalloc int[6];
+        pk.GetEVs(EVs);
+        EffortValues.ConvertToChampions(EVs, EVs);
+        TryAppend(EVs, ref line, settings, BattleTemplateToken.SPs, settings.StatsSPs);
     }
 
-    private static void AddAwakening(IAwakened a, StringBuilder sb)
+    private static void AppendGanbaru(IGanbaru g, ref string line, in BattleTemplateExportSettings settings)
     {
-        Span<byte> avs = stackalloc byte[6];
-        a.GetAVs(avs);
-        TryAdd<byte>(sb, "AVs", avs);
+        Span<byte> stats = stackalloc byte[6];
+        g.GetGVs(stats);
+        TryAppend(stats, ref line, settings, BattleTemplateToken.GVs, settings.StatsOther);
     }
 
-    private static void TryAdd<T>(StringBuilder sb, [ConstantExpected] string type, ReadOnlySpan<T> stats, T ignore = default) where T : unmanaged, IEquatable<T>
+    private static void AppendAwakening(IAwakened a, ref string line, in BattleTemplateExportSettings settings)
     {
-        var chunks = ShowdownSet.GetStringStats(stats, ignore);
-        if (chunks.Length != 0)
-            sb.AppendLine($"{type}: {string.Join(" / ", chunks)}");
+        Span<byte> stats = stackalloc byte[6];
+        a.GetAVs(stats);
+        TryAppend(stats, ref line, settings, BattleTemplateToken.AVs, settings.StatsOther);
+    }
+
+    private static void TryAppend<T>(ReadOnlySpan<T> stats, ref string line, in BattleTemplateExportSettings settings, BattleTemplateToken token, StatDisplayStyle style) where T : unmanaged, IEquatable<T>
+    {
+        var localization = settings.Localization;
+        var statNames = localization.Config.GetStatDisplay(style);
+        var value = ShowdownSet.GetStringStats(stats, default, statNames);
+        if (value.Length == 0)
+            return;
+        var result = localization.Config.Push(token, value);
+        line += Environment.NewLine + result;
     }
 
     /// <summary> Prevent stealing focus from the form that shows this. </summary>
     protected override bool ShowWithoutActivation => true;
 
     private const int WS_EX_TOPMOST = 0x00000008;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+
     protected override CreateParams CreateParams
     {
         get
         {
             CreateParams createParams = base.CreateParams;
-            createParams.ExStyle |= WS_EX_TOPMOST;
+            createParams.ExStyle |= WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
             return createParams;
         }
+    }
+
+    private readonly record struct RenderMoveLine(string Text, Image? Icon, Color Color);
+    private readonly record struct RenderTextLine(string Text, Color Color, int TopPadding, int BottomPadding);
+
+    /// <summary>
+    /// Moves the form to the specified screen coordinates without resizing or changing its z-order.
+    /// </summary>
+    /// <remarks>
+    /// This method updates the form's position using the Win32 SetWindowPos API with flags that minimize redraws and prevent activation or z-order changes.
+    /// Use this method when you need to reposition the form efficiently without affecting its size or focus.
+    /// </remarks>
+    /// <param name="x">The new horizontal position, in pixels, of the form's upper-left corner relative to the screen.</param>
+    /// <param name="y">The new vertical position, in pixels, of the form's upper-left corner relative to the screen.</param>
+    public void MoveForm(int x, int y)
+    {
+        const uint SWP_NOSIZE = 0x0001;
+        const uint SWP_NOZORDER = 0x0004;
+        const uint SWP_NOREDRAW = 0x0008;
+        const uint SWP_NOACTIVATE = 0x0010;
+        const uint SWP_NOSENDCHANGING = 0x0400;
+        const uint SWP_ASYNCWINDOWPOS = 0x4000;
+        const uint flags = SWP_NOZORDER | SWP_NOSIZE | SWP_NOREDRAW | SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_ASYNCWINDOWPOS;
+
+        const int HWND_TOPMOST = -1;
+        SetWindowPos(Handle, HWND_TOPMOST, x, y, 0, 0, flags);
+        return;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
     }
 }

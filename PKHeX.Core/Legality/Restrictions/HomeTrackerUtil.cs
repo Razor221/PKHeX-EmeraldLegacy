@@ -28,7 +28,8 @@ public static class HomeTrackerUtil
 
     /// <inheritdoc cref="IsRequired(IEncounterTemplate,PKM)"/>
     /// <remarks>
-    /// Encounters that originate in HOME -> transfer to save data
+    /// Encounters that originate in HOME -> transfer to save data.
+    /// Does not necessarily overlap with <see cref="IEncounterServerDate"/>.
     /// </remarks>
     public static bool IsRequired(IEncounterTemplate enc) => enc switch
     {
@@ -37,6 +38,7 @@ public static class HomeTrackerUtil
         WB8 { IsHOMEGift: true } => true,
         WA8 { IsHOMEGift: true } => true,
         WC9 { IsHOMEGift: true } => true,
+        WA9 { IsHOMEGift: true } => true,
         _ => enc.Generation < 8,
     };
 }

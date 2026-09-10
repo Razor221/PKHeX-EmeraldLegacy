@@ -4,7 +4,7 @@ using static PKHeX.Core.SlotType2;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Encounter Slot found in <see cref="GameVersion.Gen2"/>.
+/// Encounter Slot found in <see cref="EntityContext.Gen2"/>.
 /// </summary>
 /// <remarks>
 /// Referenced Area object contains Time data which is used for <see cref="GameVersion.C"/> origin data.
@@ -19,7 +19,7 @@ public sealed record EncounterSlot2(EncounterArea2 Parent, ushort Species, byte 
     public AbilityPermission Ability => TransporterLogic.IsHiddenDisallowedVC2(Species) ? AbilityPermission.OnlyFirst : AbilityPermission.OnlyHidden;
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsRandomUnspecificForm => Form >= EncounterUtil.FormDynamic;
 
     public string Name => $"Wild Encounter ({Version})";
@@ -80,22 +80,24 @@ public sealed record EncounterSlot2(EncounterArea2 Parent, ushort Species, byte 
 
     public PK2 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
-        var isJapanese = lang == (int)LanguageID.Japanese;
+        int language = (int)Language.GetSafeLanguage2((LanguageID)tr.Language);
+        var isJapanese = language == (int)LanguageID.Japanese;
         var pi = PersonalTable.C[Species];
+        var rnd = Util.Rand;
+
         var pk = new PK2(isJapanese)
         {
             Species = Species,
             // Form is only Unown and is derived from IVs.
             CurrentLevel = LevelMin,
             OriginalTrainerFriendship = pi.BaseFriendship,
-            DV16 = EncounterUtil.GetRandomDVs(Util.Rand),
+            DV16 = criteria.IsSpecifiedIVsAll() ? criteria.GetCombinedDVs()
+                : EncounterUtil.GetRandomDVs(rnd, criteria.Shiny.IsShiny(), criteria.HiddenPowerType),
 
-            Language = lang,
             OriginalTrainerName = tr.OT,
             TID16 = tr.TID16,
         };
-        pk.SetNotNicknamed(lang);
+        pk.SetNotNicknamed(language);
 
         if (Version == GameVersion.C)
         {
@@ -112,7 +114,7 @@ public sealed record EncounterSlot2(EncounterArea2 Parent, ushort Species, byte 
             if (!IsTreeAvailable(id))
             {
                 // Get a random TID that satisfies this slot.
-                do { id = (ushort)Util.Rand.Next(); }
+                do { id = (ushort)rnd.Next(); }
                 while (!IsTreeAvailable(id));
                 pk.TID16 = id;
             }

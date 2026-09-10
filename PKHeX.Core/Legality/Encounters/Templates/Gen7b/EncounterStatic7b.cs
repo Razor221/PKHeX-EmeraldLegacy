@@ -9,7 +9,7 @@ public sealed record EncounterStatic7b(GameVersion Version)
     public byte Generation => 7;
     public EntityContext Context => EntityContext.Gen7b;
     ushort ILocation.Location => Location;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsShiny => false;
     public bool IsEgg => false;
 
@@ -34,9 +34,10 @@ public sealed record EncounterStatic7b(GameVersion Version)
     public PB7 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PB7 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
         var pi = PersonalTable.GG[Species, Form];
+        var date = EncounterDate.GetDateSwitch();
         var pk = new PB7
         {
             Species = Species,
@@ -46,14 +47,17 @@ public sealed record EncounterStatic7b(GameVersion Version)
             MetLocation = Location,
             MetLevel = LevelMin,
             Version = version,
-            MetDate = EncounterDate.GetDateSwitch(),
+            MetDate = date,
             Ball = (byte)Ball.Poke,
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
+
+            ReceivedDate = date,
+            ReceivedTime = EncounterDate.GetTime(),
         };
         SetPINGA(pk, criteria, pi);
         pk.ResetHeight();
@@ -64,10 +68,10 @@ public sealed record EncounterStatic7b(GameVersion Version)
         return pk;
     }
 
-    private void SetPINGA(PB7 pk, EncounterCriteria criteria, PersonalInfo7GG pi)
+    private void SetPINGA(PB7 pk, in EncounterCriteria criteria, PersonalInfo7GG pi)
     {
         var rnd = Util.Rand;
-        pk.PID = rnd.Rand32();
+        pk.PID = EncounterUtil.GetRandomPID(pk, rnd, Shiny, criteria.Shiny);
         pk.EncryptionConstant = rnd.Rand32();
         pk.Nature = criteria.GetNature();
         pk.Gender = criteria.GetGender(pi);
@@ -87,7 +91,7 @@ public sealed record EncounterStatic7b(GameVersion Version)
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (pk.MetLocation != Location)
             return false;
@@ -102,10 +106,5 @@ public sealed record EncounterStatic7b(GameVersion Version)
         return true;
     }
 
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-        return pk.EggLocation == expect;
-    }
     #endregion
 }

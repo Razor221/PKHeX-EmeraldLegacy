@@ -22,14 +22,14 @@ public static class ItemConverter
     /// </summary>
     /// <param name="item">Generation 3 Item ID.</param>
     /// <returns>Generation 4+ Item ID.</returns>
-    public static ushort GetItemFuture3(ushort item) => item > Item3to4.Length ? NaN : Item3to4[item];
+    public static ushort GetItemFuture3(ushort item) => item >= Item3to4.Length ? NaN : Item3to4[item];
 
     /// <summary>
     /// Converts a Generation 2 Item ID to Generation 4+ Item ID.
     /// </summary>
     /// <param name="item">Generation 2 Item ID.</param>
     /// <returns>Generation 4+ Item ID.</returns>
-    public static ushort GetItemFuture2(byte item) => item > Item2to4.Length ? NaN : Item2to4[item];
+    public static ushort GetItemFuture2(byte item) => item >= Item2to4.Length ? NaN : Item2to4[item];
 
     /// <summary>
     /// Converts a Generation 4+ Item ID to Generation 3 Item ID.
@@ -73,8 +73,8 @@ public static class ItemConverter
         NaN, 058, 059, 061, 444, NaN, NaN, 216, 445, 446, // 5
         NaN, 447, 051, 038, 039, 040, 478, 464, 456, 484, // 6
         NaN, 482, 033, 217, 151, NaN, 237, 244, 149, 153, // 7
-        152, 245, 221, 156, 150, 485, 086, 087, 222, 487, // 8
-        NaN, 223, 486, 488, 224, 243, 248, 490, 241, 491, // 9
+        152, 245, 221, 156, 150, 485, 086, 087, 222, 486, // 8
+        NaN, 223, 487, 488, 224, 243, 248, 490, 241, 491, // 9
         NaN, 489, 240, 473, NaN, 259, 228, 246, 242, 157, // 10
         088, 089, 229, 247, 504, NaN, NaN, 239, 258, 230, // 11
         NaN, 034, 035, 036, 037, 238, 231, 475, 481, NaN, // 12
@@ -159,12 +159,24 @@ public static class ItemConverter
     /// <returns>Gen2 Item</returns>
     public static byte GetItemFuture1(byte value)
     {
-        if (!IsItemTransferable12(value))
+        if (!IsCatchRateHeldItem(value))
             return GetTeruSamaItem(value);
         return value;
     }
 
-    private static bool IsItemTransferable12(ushort item) => Legal.HeldItems_GSC.AsSpan().Contains(item);
+    /// <summary>
+    /// Gets a format specific item index depending on the desired format and the provided item index &amp; origin format.
+    /// </summary>
+    /// <param name="itemID">Item ID to convert</param>
+    /// <param name="format">Current format</param>
+    /// <returns>Converted item ID</returns>
+    public static int GetItemDisplay(int itemID, EntityContext format) => itemID == 0 ? 0 : format switch
+    {
+        EntityContext.Gen1 => GetItemFuture2(GetItemFuture1((byte)itemID)),
+        EntityContext.Gen2 => GetItemFuture2((byte)itemID),
+        EntityContext.Gen3 => GetItemFuture3((ushort)itemID),
+        _ => itemID,
+    };
 
     /// <summary>
     /// Gets a format specific <see cref="PKM.HeldItem"/> value depending on the desired format and the provided item index &amp; origin format.
@@ -200,23 +212,63 @@ public static class ItemConverter
         return destFormat switch
         {
             EntityContext.Gen1 => 0,
-            EntityContext.Gen2 => (byte) srcItem,
+            EntityContext.Gen2 => GetItemOld2((ushort) srcItem),
             EntityContext.Gen3 => GetItemOld3((ushort) srcItem),
             _ => srcItem,
         };
     }
 
+    public static bool IsItemHM1(ushort item) => item is (>= 196 and <= 200);
+    public static bool IsItemHM2(ushort item) => item is (>= 243 and <= 249);
+    public static bool IsItemHM3(ushort item) => item is (>= 339 and <= 346);
+    public static bool IsItemHM4(ushort item) => item is (>= 420 and <= 427) or 737;
+
     /// <summary>
-    /// Checks if an item ID is an HM
+    /// Checks if the catch rate byte is equivalent to a Gen2 held item.
     /// </summary>
-    /// <param name="item">Item ID</param>
-    /// <param name="generation">Generation the <see cref="item"/> exists in</param>
-    /// <returns>True if is an HM</returns>
-    public static bool IsItemHM(ushort item, byte generation) => generation switch
+    public static bool IsCatchRateHeldItem(byte rate) => FlagUtil.GetFlag(CatchRateIsHeldItem, rate);
+
+    private static ReadOnlySpan<byte> CatchRateIsHeldItem =>
+    [
+        0x3F, 0xFF, 0xFF, 0xFD, 0xFF, 0xDF, 0x3B, 0xD2,
+        0x03, 0xFF, 0xFF, 0xFB, 0xEF, 0xFF, 0xE7, 0x7E,
+        0x18, 0x9C, 0xC5, 0xF1, 0xFB, 0x77, 0xF0, 0xBF,
+        0xF7, 0xFF, 0xFF, 0xEF, 0xFF, 0xFF, 0x07, 0x00,
+    ];
+
+    /// <summary>
+    /// Gets the <see cref="EntityContext.Gen9a"/> TM index from the old sequential TM index.
+    /// </summary>
+    /// <param name="oldTM">old TM index</param>
+    /// <returns>New TM index</returns>
+    public static ushort GetTechnicalMachineIndex9a(ushort oldTM)
     {
-        1 => item is (>= 196 and <= 200),
-        2 => item is (>= 243 and <= 249),
-        3 => item is (>= 339 and <= 346),
-        _ => item is (>= 420 and <= 427) or 737,
-    };
+        var arr = RemapTechnicalMachineItemName9a;
+        if ((uint)oldTM >= arr.Length)
+            return oldTM;
+        return (ushort)(oldTM + RemapTechnicalMachineItemName9a[oldTM]);
+    }
+
+    // Old (sequential) index to Legends: Z-A "scrambled" order that is displayed to the user.
+    public static ReadOnlySpan<sbyte> RemapTechnicalMachineItemName9a =>
+    [
+          0,   0,   0,   0, +02,   0, +01, +22, +03,   0,
+        +13, +35, +30, +11, +91, +29,   0,   0, +29, +40,
+        +31, -02, +42, +70, +43, +81, +43, -02,   0, +34,
+        +44, -21,   0, -02, -14, -02, +17, +11,   0, -03,
+        -18, +57, -03, -03, -31, +13, -03, +28, -03, +55,
+          0, +22, +50, -27, -05, +52, -04, +22, -04, -25,
+        -04, -04,   0, -22, -04, -04, +12, +29, -13, +12,
+        -43, -06, -06, -65, -06, -45, -06, -06, -06, +22,
+        -68, +06, -68, -07, -07, -64, -71, -07, +15, -07,
+        -07, -07, -07, -07, -90, -07, -07, -07, -80, -07,
+        -63,   0, -08, -08, -13, -08, -71, -08, -08,
+                                                       0,
+        +01, +02, +02, +03, +04, +06, +06, +06, +07, +08,
+        +09, +12, +12, +13, +15, +17, +17, +29, +29, -21,
+        -20, -19, -17, -16, -15, -15, -12, -11, -10, -09,
+        -09, -09, -07, -06, -06, -05, -05, -03, -03, -03,
+        -03, -03, -03, -03, -03, -03, -03, -03, -03, -01,
+        -01, -01,
+    ];
 }

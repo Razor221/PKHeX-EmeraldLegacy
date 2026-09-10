@@ -18,6 +18,8 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
     public static byte ShowEncounterOpacityStripe { get; set; }
     public static byte ShowEncounterOpacityBackground { get; set; }
     public static int ShowEncounterThicknessStripe { get; set; }
+    public static float FilterMismatchOpacity { get; set; }
+    public static float FilterMismatchGrayscale { get; set; }
 
     /// <summary> Width of the generated Sprite image. </summary>
     public abstract int Width { get; }
@@ -63,7 +65,6 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
     /// <summary>
     /// Ensures all data is set up to generate sprites for the save file.
     /// </summary>
-    /// <param name="sav"></param>
     public void Initialize(SaveFile sav)
     {
         if (sav.Generation != 3)
@@ -71,14 +72,14 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
 
         // If the game is indeterminate, we might have different form sprites.
         // Currently, this only applies to Gen3's FireRed / LeafGreen
-        Game = sav.Version;
-        if (Game == GameVersion.FRLG)
-            Game = ReferenceEquals(sav.Personal, PersonalTable.FR) ? GameVersion.FR : GameVersion.LG;
+        Version = sav.Version;
+        if (Version == GameVersion.FRLG)
+            Version = ReferenceEquals(sav.Personal, PersonalTable.FR) ? GameVersion.FR : GameVersion.LG;
     }
 
-    private GameVersion Game;
+    private GameVersion Version;
 
-    private static byte GetDeoxysForm(GameVersion game) => game switch
+    private static byte GetDeoxysForm(GameVersion version) => version switch
     {
         GameVersion.FR => 1, // Attack
         GameVersion.LG => 2, // Defense
@@ -110,7 +111,7 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
             return None;
 
         if (context == EntityContext.Gen3 && species == (int)Species.Deoxys) // Depends on Gen3 save file version
-            form = GetDeoxysForm(Game);
+            form = GetDeoxysForm(Version);
         else if (context == EntityContext.Gen4 && species == (int)Species.Arceus) // Curse type's existence in Gen4
             form = GetArceusForm4(form);
 
@@ -126,7 +127,7 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
             baseSprite = LayerOverImageItem(baseSprite, heldItem, context);
         if (shiny.IsShiny())
         {
-            if (shiny == Shiny.AlwaysSquare && context.Generation() != 8)
+            if (shiny == Shiny.AlwaysSquare && !context.IsSquareShinyDifferentiated)
                 shiny = Shiny.Always;
             baseSprite = LayerOverImageShiny(baseSprite, shiny);
         }
@@ -170,26 +171,20 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
         if (shiny) // try again without shiny
         {
             var img = GetBaseImageDefault(species, form, gender, formarg, false, context);
-            if (img != null)
+            if (img is not null)
                 return img;
         }
 
         // try again without form
         var baseImage = (Bitmap?)Resources.ResourceManager.GetObject(GetSpriteStringSpeciesOnly(species));
-        if (baseImage == null) // failed again
+        if (baseImage is null) // failed again
             return Unknown;
         return ImageUtil.LayerImage(baseImage, Unknown, 0, 0, UnknownFormTransparency);
     }
 
-    private Bitmap LayerOverImageItem(Image baseImage, int item, EntityContext context)
+    private Bitmap LayerOverImageItem(Bitmap baseImage, int item, EntityContext context)
     {
-        var lump = HeldItemLumpUtil.GetIsLump(item, context);
-        var itemimg = lump switch
-        {
-            HeldItemLumpImage.TechnicalMachine => ItemTM,
-            HeldItemLumpImage.TechnicalRecord => ItemTR,
-            _ => (Image?)Resources.ResourceManager.GetObject(GetItemResourceName(item)) ?? UnknownItem,
-        };
+        var itemimg = GetItemSprite(item, context);
 
         // Redraw item in bottom right corner; since images are cropped, try to not have them at the edge
         int x = baseImage.Width - itemimg.Width - ((ItemMaxSize - itemimg.Width) / 4) - ItemShiftX;
@@ -197,7 +192,18 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
         return ImageUtil.LayerImage(baseImage, itemimg, x, y);
     }
 
-    private static Bitmap LayerOverImageShiny(Image baseImage, Shiny shiny)
+    public Bitmap GetItemSprite(int item, EntityContext context)
+    {
+        var lump = HeldItemLumpUtil.GetIsLump(item, context);
+        return lump switch
+        {
+            HeldItemLumpImage.TechnicalMachine => ItemTM,
+            HeldItemLumpImage.TechnicalRecord => ItemTR,
+            _ => (Bitmap?)Resources.ResourceManager.GetObject(GetItemResourceName(item)) ?? UnknownItem,
+        };
+    }
+
+    private static Bitmap LayerOverImageShiny(Bitmap baseImage, Shiny shiny)
     {
         // Add shiny star to top left of image.
         Bitmap rare;
@@ -208,23 +214,23 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
         return ImageUtil.LayerImage(baseImage, rare, 0, 0, ShinyTransparency);
     }
 
-    private Bitmap LayerOverImageEgg(Image baseImage, ushort species, bool hasItem)
+    private Bitmap LayerOverImageEgg(Bitmap baseImage, ushort species, bool hasItem)
     {
         if (ShowEggSpriteAsItem && !hasItem)
             return LayerOverImageEggAsItem(baseImage, species);
         return LayerOverImageEggTransparentSpecies(baseImage, species);
     }
 
-    private Bitmap LayerOverImageEggTransparentSpecies(Image baseImage, ushort species)
+    private Bitmap LayerOverImageEggTransparentSpecies(Bitmap baseImage, ushort species)
     {
         // Partially transparent species.
-        baseImage = ImageUtil.ChangeOpacity(baseImage, EggUnderLayerTransparency);
+        baseImage.ChangeOpacity(EggUnderLayerTransparency);
         // Add the egg layer over-top with full opacity.
         var egg = GetEggSprite(species);
         return ImageUtil.LayerImage(baseImage, egg, 0, 0);
     }
 
-    private Bitmap LayerOverImageEggAsItem(Image baseImage, ushort species)
+    private Bitmap LayerOverImageEggAsItem(Bitmap baseImage, ushort species)
     {
         var egg = GetEggSprite(species);
         return ImageUtil.LayerImage(baseImage, egg, EggItemShiftX, EggItemShiftY); // similar to held item, since they can't have any
@@ -246,5 +252,8 @@ public abstract class SpriteBuilder : ISpriteBuilder<Bitmap>
         ShowTeraThicknessStripe   = sprite.ShowTeraThicknessStripe;
         ShowTeraOpacityBackground = sprite.ShowTeraOpacityBackground;
         ShowTeraOpacityStripe     = sprite.ShowTeraOpacityStripe;
+
+        FilterMismatchOpacity = sprite.FilterMismatchOpacity;
+        FilterMismatchGrayscale = sprite.FilterMismatchGrayscale;
     }
 }

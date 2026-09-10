@@ -114,7 +114,7 @@ public static class RaidRNG
                 break;
         }
 
-        var nature = param.Nature != Nature.Random ? param.Nature
+        var nature = param.Nature.IsFixed ? param.Nature
             : param.Species == (int)Species.Toxtricity
                 ? ToxtricityUtil.GetRandomNature(ref rng, pk.Form)
                 : (Nature)rng.NextInt(25);
@@ -137,7 +137,16 @@ public static class RaidRNG
                 if (s.HeightScalar != height)
                     return false;
                 if (s.WeightScalar != weight)
-                    return false;
+                {
+                    if (height == 0 && s.WeightScalar == 0 && HomeQuirks.HasEnteredSetZeroScale(pk))
+                    {
+                        // OK
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
             }
         }
 
@@ -153,36 +162,37 @@ public static class RaidRNG
     /// <param name="param">Parameters to generate with</param>
     /// <param name="criteria">Criteria to generate with</param>
     /// <returns>True if the seed matches the entity</returns>
-    public static bool TryApply(PK8 pk, ulong seed, Span<int> ivs, in GenerateParam8 param, EncounterCriteria criteria)
+    public static bool TryApply(PK8 pk, ulong seed, Span<int> ivs, in GenerateParam8 param, in EncounterCriteria criteria)
     {
         var rng = new Xoroshiro128Plus(seed);
         pk.EncryptionConstant = (uint)rng.NextInt();
 
-        uint pid;
-        bool isShiny;
+        var trID = (uint)rng.NextInt();
+        var pid = (uint)rng.NextInt();
+
+        // Battle
+        var xor = GetShinyXor(pid, trID);
+        bool isShiny = xor < 16;
+        if (isShiny && param.Shiny == Shiny.Never)
         {
-            var trID = (uint)rng.NextInt();
-            pid = (uint)rng.NextInt();
-            var xor = GetShinyXor(pid, trID);
-            isShiny = xor < 16;
-            if (isShiny && param.Shiny == Shiny.Never)
-            {
-                ForceShinyState(false, ref pid, trID, 0);
-                isShiny = false;
-            }
+            ForceShinyState(false, ref pid, trID, 0);
+            isShiny = false;
         }
 
+        // Captured
         if (isShiny)
         {
-            if (!GetIsShiny(pk.ID32, pid))
+            if (!GetIsShiny6(pk.ID32, pid))
                 pid = GetShinyPID(pk.TID16, pk.SID16, pid, 0);
         }
         else
         {
-            if (GetIsShiny(pk.ID32, pid))
+            if (GetIsShiny6(pk.ID32, pid))
                 pid ^= 0x1000_0000;
         }
 
+        if (param.Shiny is Shiny.Random && criteria.IsSpecifiedShiny() && !criteria.IsSatisfiedShiny(GetShinyXor(pid, pk.ID32), 16))
+            return false;
         pk.PID = pid;
 
         const int UNSET = -1;
@@ -209,15 +219,15 @@ public static class RaidRNG
                 ivs[i] = (int)rng.NextInt(MAX + 1);
         }
 
-        if (!param.IVs.IsSpecified && !criteria.IsIVsCompatibleSpeedLast(ivs, 8))
+        if (!param.IVs.IsSpecified && !criteria.IsIVsCompatibleSpeedLast(ivs))
             return false;
 
-        pk.IV_HP = ivs[0];
-        pk.IV_ATK = ivs[1];
-        pk.IV_DEF = ivs[2];
-        pk.IV_SPA = ivs[3];
-        pk.IV_SPD = ivs[4];
-        pk.IV_SPE = ivs[5];
+        pk.IV32 = (uint)ivs[0] |
+                  (uint)(ivs[1] << 05) |
+                  (uint)(ivs[2] << 10) |
+                  (uint)(ivs[5] << 15) | // speed is last in the array, but in the middle of the 32bit value
+                  (uint)(ivs[3] << 20) |
+                  (uint)(ivs[4] << 25);
 
         int ability = param.Ability switch
         {
@@ -234,16 +244,18 @@ public static class RaidRNG
             PersonalInfo.RatioMagicMale => 0,
             _ => rng.NextInt(253) + 1 < param.GenderRatio ? (byte)1 : (byte)0,
         };
-        if (!criteria.IsGenderSatisfied(gender))
+        if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
             return false;
         pk.Gender = gender;
 
-        var nature = param.Nature != Nature.Random ? param.Nature
+        var nature = param.Nature.IsFixed ? param.Nature
             : param.Species == (int)Species.Toxtricity
                 ? ToxtricityUtil.GetRandomNature(ref rng, pk.Form)
                 : (Nature)rng.NextInt(25);
+        if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(nature))
+            return false;
 
-        pk.Nature = pk.StatNature = nature;
+        pk.Nature = pk.StatAlignment = nature;
 
         var height = rng.NextInt(0x81) + rng.NextInt(0x80);
         var weight = rng.NextInt(0x81) + rng.NextInt(0x80);

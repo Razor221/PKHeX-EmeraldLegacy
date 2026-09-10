@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace PKHeX.Core;
 
 /// <summary>
-/// Iterates to find potentially matched encounters for <see cref="GameVersion.Gen3"/>.
+/// Iterates to find potentially matched encounters for <see cref="EntityContext.Gen3"/>.
 /// </summary>
 public record struct EncounterEnumerator3(PKM Entity, EvoCriteria[] Chain, GameVersion Version) : IEnumerator<MatchedEncounter<IEncounterable>>
 {
@@ -49,8 +49,8 @@ public record struct EncounterEnumerator3(PKM Entity, EvoCriteria[] Chain, GameV
         StartCaptures,
 
         SlotStart,
-        SlotR,
         SlotS,
+        SlotR,
         SlotE,
         SwarmRSE,
         SlotFR,
@@ -74,6 +74,7 @@ public record struct EncounterEnumerator3(PKM Entity, EvoCriteria[] Chain, GameV
 
     public bool MoveNext()
     {
+        top:
         switch (State)
         {
             case YieldState.Start:
@@ -145,32 +146,31 @@ public record struct EncounterEnumerator3(PKM Entity, EvoCriteria[] Chain, GameV
             case YieldState.SlotStart:
                 if (!EncounterStateUtil.CanBeWildEncounter(Entity))
                     goto case YieldState.SlotEnd;
-                if (Version == GameVersion.R)
-                { State = YieldState.SlotR; goto case YieldState.SlotR; }
-                if (Version == GameVersion.S)
-                { State = YieldState.SlotS; goto case YieldState.SlotS; }
-                if (Version == GameVersion.E)
-                { State = YieldState.SlotE; goto case YieldState.SlotE; }
                 if (Version == GameVersion.FR)
                 { State = YieldState.SlotFR; goto case YieldState.SlotFR; }
                 if (Version == GameVersion.LG)
                 { State = YieldState.SlotLG; goto case YieldState.SlotLG; }
-                throw new ArgumentOutOfRangeException(nameof(Version));
+                if (Version is not (GameVersion.R or GameVersion.S or GameVersion.E))
+                    throw new ArgumentOutOfRangeException(nameof(Version));
+                State = YieldState.SwarmRSE; goto case YieldState.SwarmRSE;
+
+            case YieldState.SwarmRSE:
+                // Aggressively check for Swarm (special move), only one match possible. Next loop will reach regular slots.
+                // higher priority due to having special move, and poor vblank matching deferral tiebreaks
+                if (TryGetNext<EncounterArea3, EncounterSlot3>(Encounters3RSE.SlotsSwarmRSE))
+                    return true;
+                Index = 0; State = YieldState.SlotS + (byte)((byte)Version - 1); Index = 0; goto top;
 
             case YieldState.SlotR:
                 if (TryGetNext<EncounterArea3, EncounterSlot3>(Encounters3RSE.SlotsR))
                     return true;
-                Index = 0; State = YieldState.SwarmRSE; goto case YieldState.SwarmRSE;
+                Index = 0; goto case YieldState.SlotEnd;
             case YieldState.SlotS:
                 if (TryGetNext<EncounterArea3, EncounterSlot3>(Encounters3RSE.SlotsS))
                     return true;
-                Index = 0; State = YieldState.SwarmRSE; goto case YieldState.SwarmRSE;
+                Index = 0; goto case YieldState.SlotEnd;
             case YieldState.SlotE:
                 if (TryGetNext<EncounterArea3, EncounterSlot3>(Encounters3RSE.SlotsE))
-                    return true;
-                Index = 0; State = YieldState.SwarmRSE; goto case YieldState.SwarmRSE;
-            case YieldState.SwarmRSE:
-                if (TryGetNext<EncounterArea3, EncounterSlot3>(Encounters3RSE.SlotsSwarmRSE))
                     return true;
                 Index = 0; goto case YieldState.SlotEnd;
 
@@ -242,13 +242,13 @@ public record struct EncounterEnumerator3(PKM Entity, EvoCriteria[] Chain, GameV
                 return SetCurrent(egg);
             case YieldState.BredSplit:
                 State = YieldState.Fallback;
-                if (!EncounterGenerator3.TryGetSplit((EncounterEgg)Current.Encounter, Chain, out egg))
+                if (!EncounterGenerator3.TryGetSplit((EncounterEgg3)Current.Encounter, Chain, out egg))
                     goto case YieldState.Fallback;
                 return SetCurrent(egg);
 
             case YieldState.Fallback:
                 State = YieldState.End;
-                if (Deferred != null)
+                if (Deferred is not null)
                     return SetCurrent(Deferred, Rating);
                 break;
         }

@@ -1,8 +1,8 @@
 using System;
-using System.Collections.Generic;
 using FluentAssertions;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Xunit;
 
 namespace PKHeX.Core.Tests.Legality;
@@ -13,13 +13,78 @@ public class LegalityTest
     static LegalityTest() => TestUtil.InitializeLegality();
 
     [Theory]
-    [InlineData("censor")]
-    [InlineData("buttnugget")]
-    [InlineData("18넘")]
-    [InlineData("inoffensive", false)]
-    public void CensorsBadWords(string badword, bool value = true)
+    [InlineData("Ass")]
+    [InlineData("Ａｓｓ")]
+    [InlineData("9/11")]
+    [InlineData("９／１１", false)]
+    [InlineData("baise")]
+    [InlineData("baisé", false)]
+    [InlineData("BAISÉ", false)]
+    [InlineData("scheiße")]
+    [InlineData("SCHEISSE", false)]
+    [InlineData("RICCHIONE ")]
+    [InlineData("RICCHIONE", false)]
+    [InlineData("せっくす")]
+    [InlineData("セックス")]
+    [InlineData("ふぁっく", false)]
+    [InlineData("ファック", false)]
+    [InlineData("kofagrigus", false)]
+    [InlineData("cofagrigus", false)]
+    public void CensorsBadWordsGen5(string badword, bool value = true)
     {
-        WordFilter.TryMatch(badword, out _).Should().Be(value, "the word should have been identified as a bad word");
+        var result = WordFilter5.IsFiltered(badword, out _);
+        result.Should().Be(value, $"the word {(value ? "should" : "should not")} have been identified as a bad word");
+    }
+
+    [Theory]
+    [InlineData("kofagrigus")]
+    [InlineData("cofagrigus")]
+    [InlineData("Cofagrigus", false)]
+    public void CensorsBadWordsGen6(string badword, bool value = true)
+    {
+        var result = WordFilter3DS.IsFilteredGen6(badword, out _);
+        result.Should().Be(value, $"the word {(value ? "should" : "should not")} have been identified as a bad word");
+    }
+
+    [Theory]
+    [InlineData("badword")]
+    [InlineData("butt nuggets")]
+    [InlineData("18년")]
+    [InlineData("ふぁっく")]
+    [InlineData("ｇｃｄ")]
+    [InlineData("Ｐ０ＲＮ")]
+    [InlineData("gmail.com")]
+    [InlineData("kofagrigus")]
+    [InlineData("cofagrigus", false)]
+    [InlineData("Cofagrigus", false)]
+    [InlineData("inoffensive", false)]
+    public void CensorsBadWordsGen7(string badword, bool value = true)
+    {
+        var result = WordFilter3DS.IsFilteredGen7(badword, out _);
+        result.Should().Be(value, $"the word {(value ? "should" : "should not")} have been identified as a bad word");
+    }
+
+    [Theory]
+    [InlineData("badword")]
+    [InlineData("butt nuggets")]
+    [InlineData("18넘")]
+    [InlineData("ふぁっく")]
+    [InlineData("ｳﾞｧｷﾞﾅ")]
+    [InlineData("ｵｯﾊﾟｲ")]
+    [InlineData("ﾌｧｯﾞｸ")]
+    [InlineData("ﾌｧﾂﾞｸ", false)]
+    [InlineData("ﾌｧｯｸﾞ", false)]
+    [InlineData("sh!t")]
+    [InlineData("sh！t", false)]
+    [InlineData("abu$e")]
+    [InlineData("kofagrigus")]
+    [InlineData("cofagrigus", false)]
+    [InlineData("Cofagrigus", false)]
+    [InlineData("inoffensive", false)]
+    public void CensorsBadWordsSwitch(string badword, bool value = true)
+    {
+        var result = WordFilterNX.IsFiltered(badword, out _, EntityContext.Gen9);
+        result.Should().Be(value, $"the word {(value ? "should" : "should not")} have been identified as a bad word");
     }
 
     [Theory]
@@ -62,15 +127,14 @@ public class LegalityTest
 
             var data = File.ReadAllBytes(file);
             var prefer = EntityFileExtension.GetContextFromExtension(file);
-            prefer.IsValid().Should().BeTrue("filename is expected to have a valid extension");
+            prefer.IsValid.Should().BeTrue("filename is expected to have a valid extension");
 
             var dn = fi.DirectoryName ?? string.Empty;
-            ParseSettings.AllowGBCartEra = dn.Contains("GBCartEra");
+            ParseSettings.AllowEraCartGB = dn.Contains("GBCartEra");
+            ParseSettings.AllowEraCartGBA = !dn.Contains("GBAVCEra");
             ParseSettings.Settings.Tradeback.AllowGen1Tradeback = dn.Contains("1 Tradeback");
             var pk = EntityFormat.GetFromBytes(data, prefer);
             pk.Should().NotBeNull($"the PKM '{new FileInfo(file).Name}' should have been loaded");
-            if (pk == null)
-                continue;
             var legality = new LegalityAnalysis(pk);
             if (legality.Valid == isValid)
             {
@@ -81,7 +145,7 @@ public class LegalityTest
             var fn = Path.Combine(dn, fi.Name);
             if (isValid)
             {
-                legality.Valid.Should().BeTrue($"because the file '{fn}' should be Valid, but found:{Environment.NewLine}{string.Join(Environment.NewLine, GetIllegalLines(legality))}");
+                legality.Valid.Should().BeTrue($"because the file '{fn}' should be Valid, but found:{Environment.NewLine}{GetIllegalLines(legality)}");
             }
             else
             {
@@ -91,15 +155,25 @@ public class LegalityTest
         ctr.Should().BeGreaterThan(0, "any amount of files should have been processed from a folder that exists.");
     }
 
-    private static IEnumerable<string> GetIllegalLines(LegalityAnalysis legality)
+    // Simple info-dump for illegal lines in a LegalityAnalysis.
+    private static string GetIllegalLines(LegalityAnalysis legality)
     {
+        var localizer = new LegalityLocalizationContext
+        {
+            Analysis = legality,
+            Settings = LegalityLocalizationSet.GetLocalization(GameLanguage.DefaultLanguage),
+        };
+
+        StringBuilder result = new();
         foreach (var l in legality.Results.Where(z => !z.Valid))
-            yield return l.Comment;
+            result.AppendLine(localizer.Humanize(l));
 
         var info = legality.Info;
         foreach (var m in info.Moves.Where(z => !z.Valid))
-            yield return m.Summary(info.Entity, info.EvoChainsAllGens);
+            result.AppendLine(m.Summary(localizer));
         foreach (var r in info.Relearn.Where(z => !z.Valid))
-            yield return r.Summary(info.Entity, info.EvoChainsAllGens);
+            result.AppendLine(r.Summary(localizer));
+
+        return result.ToString();
     }
 }

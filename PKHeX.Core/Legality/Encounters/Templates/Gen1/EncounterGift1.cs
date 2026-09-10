@@ -15,11 +15,11 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
     public byte Generation => 1;
     public EntityContext Context => EntityContext.Gen1;
     public bool IsEgg => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public Ball FixedBall => Ball.Poke;
     public AbilityPermission Ability => AbilityPermission.OnlyHidden;
     public bool IsShiny => false;
-    public ushort Location => 0;
+    ushort ILocation.Location => 0;
     public byte Form => 0;
     public Shiny Shiny => Shiny.Random;
 
@@ -49,6 +49,7 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
         VirtualConsoleMew = 1,
         Stadium = 2,
         EuropeTour = 3,
+        JapanTour = 4,
     }
 
     private const ushort TrainerIDStadiumJPN = 1999;
@@ -62,6 +63,7 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
     private const string VirtualConsoleMewINT = "GF";
     private const string VirtualConsoleMewJPN = "ゲーフリ";
     private const string FirstTourOT = "YOSHIRA";
+    private const string FirstJapanOT = "マクハリ";
 
     private static bool IsTourOT(ReadOnlySpan<char> str) => str switch
     {
@@ -75,6 +77,40 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
         "LUIGW" => true,
         "LUIGIC" => true,
         "YOSHIC" => true,
+        "EUROPE" => true,
+        "SWEDEN" => true,
+        "NORWAY" => true,
+        "FINLAND" => true,
+        "DENMARK" => true,
+        "AUSTRIA" => true,
+        "UK" => true,
+        "NAL" => true,
+        "MARIO" => true,
+        _ => false,
+    };
+
+    private static bool IsJapanOT(ReadOnlySpan<char> str) => str switch
+    {
+        // Nintendo Space World '99 Mew
+        // August 27 to 29, 1999
+        "マクハリ" => true,
+
+        // Next Generation World Hobby Fair Dome Cup Mew
+        // December 7, 1997 to February 15, 1998
+        "フクオカ" => true,
+        "トウキョー" => true,
+        "オーサカ" => true,
+        "サッポロ" => true,
+        "ナゴヤ" => true,
+
+        // Nintendo Space World '97 Mew
+        // November 22 to 24, 1997
+        "マリオ" => true,
+        "クッパ" => true,
+        "ルイージ" => true,
+        "ピーチ" => true,
+        "ヨッシー" => true,
+        "ドンキー" => true,
         _ => false,
     };
 
@@ -86,7 +122,7 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
         Language = (LanguageRestriction)data[6];
         Trainer = (TrainerType)data[7];
 
-        if (Trainer is EuropeTour)
+        if (Trainer is EuropeTour or JapanTour)
             IVs = new(5, 10, 1, 12, 5, 5);
         else if (Trainer is VirtualConsoleMew)
             IVs = new(15, 15, 15, 15, 15, 15);
@@ -111,7 +147,9 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
             CurrentLevel = LevelMin,
             Type1 = pi.Type1,
             Type2 = pi.Type2,
-            DV16 = IVs.IsSpecified ? EncounterUtil.GetDV16(IVs) : EncounterUtil.GetRandomDVs(rand),
+            DV16 = IVs.IsSpecified ? EncounterUtil.GetDV16(IVs)
+                : criteria.IsSpecifiedIVsAll() ? criteria.GetCombinedDVs()
+                : EncounterUtil.GetRandomDVs(rand, criteria.Shiny.IsShiny(), criteria.HiddenPowerType),
 
             CatchRate = Trainer switch
             {
@@ -140,11 +178,11 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
                 },
                 VirtualConsoleMew => lang == Japanese ? VirtualConsoleMewJPN : VirtualConsoleMewINT,
                 EuropeTour => FirstTourOT, // YOSHIRA
+                JapanTour => FirstJapanOT, // マクハリ
                 _ => EncounterUtil.GetTrainerName(tr, (int)lang),
             },
         };
         pk.SetNotNicknamed((int)lang);
-
         pk.SetMoves(Moves);
         pk.ResetPartyStats();
         return pk;
@@ -158,7 +196,7 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
         if (Language == LanguageRestriction.International && request is not (English or French or Italian or German or Spanish))
             return English;
 
-        if (request is Hacked or UNUSED_6 or >= Korean)
+        if (request is None or UNUSED_6 or >= Korean)
             return English;
         return request;
     }
@@ -170,8 +208,6 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
         if (Language != LanguageRestriction.Any && pk.Japanese != (Language == LanguageRestriction.Japanese))
-            return false;
-        if (!IsMatchEggLocation(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -213,6 +249,8 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
 
         if (Trainer == EuropeTour)
             return IsTourOT(trainer);
+        if (Trainer == JapanTour)
+            return IsJapanOT(trainer);
 
         var language = pk.Language;
         if (Trainer == VirtualConsoleMew)
@@ -251,15 +289,6 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
         _ => true,
     };
 
-    private static bool IsMatchEggLocation(PKM pk)
-    {
-        if (pk.Format <= 2)
-            return true;
-
-        var expect = pk is PB8 ? Locations.Default8bNone : 0;
-        return pk.EggLocation == expect;
-    }
-
     public EncounterMatchRating GetMatchRating(PKM pk)
     {
         if (IsMatchPartial(pk))
@@ -287,7 +316,7 @@ public sealed record EncounterGift1 : IEncounterable, IEncounterMatch, IEncounte
 
     private bool IsCatchRateValid(byte rate)
     {
-        if (ParseSettings.AllowGen1Tradeback && PK1.IsCatchRateHeldItem(rate))
+        if (ParseSettings.AllowGen1Tradeback && ItemConverter.IsCatchRateHeldItem(rate))
             return true;
 
         if (Version == GameVersion.Stadium)

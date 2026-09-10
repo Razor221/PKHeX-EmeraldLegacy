@@ -13,7 +13,7 @@ namespace PKHeX.WinForms
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing && (components is not null))
             {
                 components.Dispose();
             }
@@ -218,7 +218,6 @@ namespace PKHeX.WinForms
             // KChart
             // 
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Inherit;
-            BackColor = System.Drawing.Color.White;
             ClientSize = new System.Drawing.Size(1077, 615);
             Controls.Add(DGV);
             MinimumSize = new System.Drawing.Size(1093, 654);

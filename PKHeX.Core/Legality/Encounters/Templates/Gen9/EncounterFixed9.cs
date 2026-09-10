@@ -19,7 +19,7 @@ public sealed record EncounterFixed9
     public bool IsEgg => false;
     public Ball FixedBall => Ball.None;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public AbilityPermission Ability { get; init; }
 
     public required ushort Species { get; init; }
@@ -77,12 +77,12 @@ public sealed record EncounterFixed9
     public PK9 ConvertToPKM(ITrainerInfo tr) => ConvertToPKM(tr, EncounterCriteria.Unrestricted);
     public PK9 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
         var pi = PersonalTable.SV[Species, Form];
         var pk = new PK9
         {
-            Language = lang,
+            Language = language,
             Species = Species,
             Form = Form,
             CurrentLevel = LevelMin,
@@ -93,7 +93,7 @@ public sealed record EncounterFixed9
             Version = version,
             Ball = (byte)Ball.Poke,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
             ObedienceLevel = LevelMin,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
@@ -110,12 +110,12 @@ public sealed record EncounterFixed9
         return pk;
     }
 
-    private void SetPINGA(PK9 pk, EncounterCriteria criteria, PersonalInfo9SV pi)
+    private void SetPINGA(PK9 pk, in EncounterCriteria criteria, PersonalInfo9SV pi)
     {
         var rnd = Util.Rand;
-        pk.PID = rnd.Rand32();
+        pk.PID = EncounterUtil.GetRandomPID(pk, rnd, criteria.Shiny);
         pk.EncryptionConstant = rnd.Rand32();
-        pk.Nature = pk.StatNature = criteria.GetNature();
+        pk.Nature = pk.StatAlignment = criteria.GetNature();
         pk.Gender = criteria.GetGender(pi);
         pk.RefreshAbility(criteria.GetAbilityFromNumber(Ability));
 
@@ -123,8 +123,6 @@ public sealed record EncounterFixed9
 
         var type = Tera9RNG.GetTeraType(rnd.Rand64(), TeraType, Species, Form);
         pk.TeraTypeOriginal = (MoveType)type;
-        if (criteria.IsSpecifiedTeraType() && type != criteria.TeraType)
-            pk.SetTeraType(type); // sets the override type
 
         pk.HeightScalar = PokeSizeUtil.GetRandomScalar(rnd);
         pk.WeightScalar = PokeSizeUtil.GetRandomScalar(rnd);
@@ -141,7 +139,7 @@ public sealed record EncounterFixed9
             return false;
         if (Gender != FixedGenderUtil.GenderRandom && pk.Gender != Gender)
             return false;
-        if (!IsMatchEggLocation(pk))
+        if (!this.IsMatchEggLocation(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -177,11 +175,6 @@ public sealed record EncounterFixed9
         return false;
     }
 
-    private bool IsMatchEggLocation(PKM pk)
-    {
-        var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-        return pk.EggLocation == expect;
-    }
 
     private bool IsMatchLocation(PKM pk)
     {

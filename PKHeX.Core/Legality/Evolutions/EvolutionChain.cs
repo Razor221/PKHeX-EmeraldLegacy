@@ -15,7 +15,7 @@ public static class EvolutionChain
     public static EvolutionHistory GetEvolutionChainsAllGens(PKM pk, IEncounterTemplate enc)
     {
         var min = GetMinLevel(pk, enc);
-        var origin = new EvolutionOrigin(pk.Species, enc.Version, enc.Generation, min, pk.CurrentLevel);
+        var origin = new EvolutionOrigin(pk.Species, enc.Context, enc.Generation, min, pk.CurrentLevel);
         if (!pk.IsEgg && enc is not EncounterInvalid)
             return GetEvolutionChainsSearch(pk, origin, enc.Context, enc.Species);
 
@@ -68,10 +68,10 @@ public static class EvolutionChain
         while (true)
         {
             group.Evolve(chain, pk, enc, history);
-            var previous = group.GetNext(pk, enc);
-            if (previous is null)
+            var next = group.GetNext(pk, enc);
+            if (next is null)
                 break;
-            group = previous;
+            group = next;
         }
         return history;
     }

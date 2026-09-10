@@ -5,8 +5,11 @@ using static PKHeX.Core.PIDType;
 namespace PKHeX.Core;
 
 /// <summary>
-/// High-level wrappers for the Golden Era of RNG manipulation.
+/// Logic for detecting what the player had as their lead party member when obtaining a wild capture.
 /// </summary>
+/// <remarks>
+/// Used to determine the lead party member &amp; initial seed for encounters in Generation 3 and 4 games.
+/// </remarks>
 public static class LeadFinder
 {
     /// <inheritdoc cref="GetLeadInfo4{TEnc,TEvo}"/>
@@ -15,7 +18,7 @@ public static class LeadFinder
         where TEvo : ILevelRange
     {
         var type = pv.Type;
-        if (type.IsClassicMethod())
+        if (type.IsClassicMethod)
             return MethodH.GetSeed(enc, pv.OriginSeed, evo, emerald, gender, format);
         return default;
     }
@@ -45,7 +48,7 @@ public static class LeadFinder
             // There's a very-very rare chance that the PID-IV can be from Cute Charm too.
             // It may match Method 1, but since we early-return, we don't check for Cute Charm.
             // So, we check for Cute Charm here and try checking Cute Charm frames if it matches.
-            if (MethodFinder.IsCuteCharm(pk, pk.EncryptionConstant))
+            if (CuteCharm4.IsCuteCharm(pk, pk.EncryptionConstant))
                 type = CuteCharm;
         }
         else if (type is Method_1)
@@ -63,7 +66,7 @@ public static class LeadFinder
             // There's a very-very rare chance that the PID-IV can be from Cute Charm too.
             // It may match Method 1, but since we early-return, we don't check for Cute Charm.
             // So, we check for Cute Charm here and try checking Cute Charm frames if it matches.
-            if (MethodFinder.IsCuteCharm(pk, pk.EncryptionConstant))
+            if (CuteCharm4.IsCuteCharm(pk, pk.EncryptionConstant))
                 type = CuteCharm;
         }
         if (type is CuteCharm)
@@ -108,7 +111,7 @@ public static class LeadFinder
         result = hgss
             ? MethodK.GetSeed(enc, seed, evo, format)
             : MethodJ.GetSeed(enc, seed, evo, format);
-        return result.IsValid();
+        return result.IsValid;
     }
 
     private static bool TryGetMatchCuteCharm4<TEnc, TEvo>(TEnc enc, PKM pk, TEvo evo, byte format, out LeadSeed result)

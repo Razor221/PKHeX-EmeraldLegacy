@@ -1,7 +1,7 @@
 namespace PKHeX.Core;
 
 /// <summary>
-/// Encounter Slot found in <see cref="GameVersion.Gen1"/>.
+/// Encounter Slot found in <see cref="EntityContext.Gen1"/>.
 /// </summary>
 public sealed record EncounterSlot1(EncounterArea1 Parent, ushort Species, byte LevelMin, byte LevelMax, byte SlotNumber)
     : IEncounterable, IEncounterMatch, IEncounterConvertible<PK1>, INumberedSlot
@@ -13,7 +13,7 @@ public sealed record EncounterSlot1(EncounterArea1 Parent, ushort Species, byte 
     public AbilityPermission Ability => TransporterLogic.IsHiddenDisallowedVC1(Species) ? AbilityPermission.OnlyFirst : AbilityPermission.OnlyHidden;
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
 
     public byte Form => 0;
 
@@ -31,24 +31,27 @@ public sealed record EncounterSlot1(EncounterArea1 Parent, ushort Species, byte 
 
     public PK1 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, Version);
-        var isJapanese = lang == (int)LanguageID.Japanese;
-        var pi = EncounterUtil.GetPersonal1(Version, Species);
+        var version = this.GetCompatibleVersion(tr.Version);
+        int language = (int)Language.GetSafeLanguage1((LanguageID)tr.Language, version);
+        var isJapanese = language == (int)LanguageID.Japanese;
+        var pi = EncounterUtil.GetPersonal1(version, Species);
         var pk = new PK1(isJapanese)
         {
             Species = Species,
             CurrentLevel = LevelMin,
             CatchRate = pi.CatchRate,
-            DV16 = EncounterUtil.GetRandomDVs(Util.Rand),
+            DV16 = EncounterUtil.GetRandomDVs(Util.Rand, criteria.Shiny.IsShiny(), criteria.HiddenPowerType),
 
-            OriginalTrainerName = EncounterUtil.GetTrainerName(tr, lang),
+            OriginalTrainerName = EncounterUtil.GetTrainerName(tr, language),
             TID16 = tr.TID16,
             Type1 = pi.Type1,
             Type2 = pi.Type2,
         };
-        pk.SetNotNicknamed(lang);
+        pk.SetNotNicknamed(language);
+        if (criteria.Shiny.IsShiny())
+            pk.SetShiny();
 
-        EncounterUtil.SetEncounterMoves(pk, Version, LevelMin);
+        EncounterUtil.SetEncounterMoves(pk, version, LevelMin);
 
         pk.ResetPartyStats();
         return pk;
@@ -67,7 +70,7 @@ public sealed record EncounterSlot1(EncounterArea1 Parent, ushort Species, byte 
 
         var rate = pk1.CatchRate;
         var expect = EncounterUtil.GetPersonal1(Version, Species).CatchRate;
-        if (expect != rate && !(ParseSettings.AllowGen1Tradeback && GBRestrictions.IsTradebackCatchRate(rate)))
+        if (expect != rate && !(ParseSettings.AllowGen1Tradeback && ItemConverter.IsCatchRateHeldItem(rate)))
             return false;
         return true;
     }

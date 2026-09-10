@@ -9,7 +9,7 @@ namespace PKHeX.Core;
 /// <inheritdoc cref="SAV6" />
 public sealed class SAV6XY : SAV6, ISaveBlock6XY, IMultiplayerSprite, IBoxDetailName, IBoxDetailWallpaper, IMysteryGiftStorageProvider, IDaycareStorage, IDaycareEggState, IDaycareExperience, IDaycareRandomState<ulong>
 {
-    public SAV6XY(byte[] data) : base(data, SaveBlockAccessor6XY.BlockMetadataOffset)
+    public SAV6XY(Memory<byte> data) : base(data, SaveBlockAccessor6XY.BlockMetadataOffset)
     {
         Blocks = new SaveBlockAccessor6XY(this);
         Initialize();
@@ -25,10 +25,12 @@ public sealed class SAV6XY : SAV6, ISaveBlock6XY, IMultiplayerSprite, IBoxDetail
     public override PersonalTable6XY Personal => PersonalTable.XY;
     public override ReadOnlySpan<ushort> HeldItems => Legal.HeldItems_XY;
     public SaveBlockAccessor6XY Blocks { get; }
-    protected override SAV6XY CloneInternal() => new((byte[])Data.Clone());
+    protected override SAV6XY CloneInternal() => new(Data.ToArray());
     public override ushort MaxMoveID => Legal.MaxMoveID_6_XY;
     public override int MaxItemID => Legal.MaxItemID_6_XY;
     public override int MaxAbilityID => Legal.MaxAbilityID_6_XY;
+
+    public override PlayerBag6XY Inventory => new(this);
 
     public override bool HasPokeDex => true;
 
@@ -45,14 +47,14 @@ public sealed class SAV6XY : SAV6, ISaveBlock6XY, IMultiplayerSprite, IBoxDetail
 
     #region Blocks
     public override IReadOnlyList<BlockInfo> AllBlocks => Blocks.BlockInfo;
-    public override MyItem Items => Blocks.Items;
+    public override MyItem6XY Items => Blocks.Items;
     public override ItemInfo6 ItemInfo => Blocks.ItemInfo;
     public override GameTime6 GameTime => Blocks.GameTime;
     public override Situation6 Situation => Blocks.Situation;
     public override PlayTime6 Played => Blocks.Played;
     public override FieldMoveModelSave6 Overworld => Blocks.Overworld;
-    public override MyStatus6 Status => Blocks.Status;
-    public override RecordBlock6 Records => Blocks.Records;
+    public override MyStatus6XY Status => Blocks.Status;
+    public override RecordBlock6XY Records => Blocks.Records;
     public override EventWork6 EventWork => Blocks.EventWork;
     public UnionPokemon6 Fused => Blocks.Fused;
     public GTS6 GTS => Blocks.GTS;
@@ -67,12 +69,13 @@ public sealed class SAV6XY : SAV6, ISaveBlock6XY, IMultiplayerSprite, IBoxDetail
     public Zukan6XY Zukan => Blocks.Zukan;
     public Misc6XY Misc => Blocks.Misc;
     public Fashion6XY Fashion => Blocks.Fashion;
-    public SubEventLog6 SUBE => Blocks.SUBE;
+    public SubEventLog6XY SUBE => Blocks.SUBE;
     public ConfigSave6 Config => Blocks.Config;
     public Encount6 Encount => Blocks.Encount;
     public BerryField6XY BerryField => Blocks.BerryField;
     public HallOfFame6 HallOfFame => Blocks.HallOfFame;
 
+    SubEventLog6 ISaveBlock6Main.SUBE => SUBE;
     IMysteryGiftStorage IMysteryGiftStorageProvider.MysteryGiftStorage => MysteryGift;
     #endregion
 
@@ -98,8 +101,8 @@ public sealed class SAV6XY : SAV6, ISaveBlock6XY, IMultiplayerSprite, IBoxDetail
         set => Blocks.Daycare.Seed = value;
     }
 
-    public override string JPEGTitle => !HasJPPEGData ? string.Empty : StringConverter6.GetString(Data.AsSpan(JPEG, 0x1A));
-    public override byte[] GetJPEGData() => !HasJPPEGData ? [] : Data.AsSpan(JPEG + 0x54, 0xE004).ToArray();
+    public override string JPEGTitle => !HasJPPEGData ? string.Empty : StringConverter6.GetString(Data.Slice(JPEG, 0x1A));
+    public override Span<byte> GetJPEGData() => !HasJPPEGData ? [] : Data.Slice(JPEG + 0x54, 0xE004);
     private bool HasJPPEGData => Data[JPEG + 0x54] == 0xFF;
 
     public void UnlockAllFriendSafariSlots()

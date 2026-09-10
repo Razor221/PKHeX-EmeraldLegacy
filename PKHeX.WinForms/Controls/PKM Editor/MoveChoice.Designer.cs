@@ -52,12 +52,12 @@ namespace PKHeX.WinForms.Controls
             // 
             // TB_PP
             // 
-            TB_PP.Location = new System.Drawing.Point(160, 0);
+            TB_PP.Location = new System.Drawing.Point(176, 0);
             TB_PP.Margin = new System.Windows.Forms.Padding(0, 0, 2, 0);
             TB_PP.Mask = "000";
             TB_PP.Name = "TB_PP";
             TB_PP.PromptChar = ' ';
-            TB_PP.Size = new System.Drawing.Size(24, 23);
+            TB_PP.Size = new System.Drawing.Size(24, 25);
             TB_PP.TabIndex = 1;
             // 
             // CB_PPUps
@@ -65,10 +65,10 @@ namespace PKHeX.WinForms.Controls
             CB_PPUps.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             CB_PPUps.FormattingEnabled = true;
             CB_PPUps.Items.AddRange(new object[] { "0", "1", "2", "3" });
-            CB_PPUps.Location = new System.Drawing.Point(186, 0);
+            CB_PPUps.Location = new System.Drawing.Point(202, 0);
             CB_PPUps.Margin = new System.Windows.Forms.Padding(0, 0, 4, 0);
             CB_PPUps.Name = "CB_PPUps";
-            CB_PPUps.Size = new System.Drawing.Size(32, 23);
+            CB_PPUps.Size = new System.Drawing.Size(32, 25);
             CB_PPUps.TabIndex = 2;
             // 
             // CB_Move
@@ -77,24 +77,29 @@ namespace PKHeX.WinForms.Controls
             CB_Move.AutoCompleteSource = System.Windows.Forms.AutoCompleteSource.ListItems;
             CB_Move.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawVariable;
             CB_Move.DropDownHeight = 400;
+            CB_Move.DropDownWidth = 156;
             CB_Move.FormattingEnabled = true;
             CB_Move.IntegralHeight = false;
             CB_Move.Location = new System.Drawing.Point(32, 0);
             CB_Move.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
             CB_Move.Name = "CB_Move";
-            CB_Move.Size = new System.Drawing.Size(120, 24);
+            CB_Move.Size = new System.Drawing.Size(136, 26);
             CB_Move.TabIndex = 0;
             CB_Move.SelectedIndexChanged += CB_Move_SelectedIndexChanged;
             // 
             // FLP_Move
             // 
+            FLP_Move.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left;
+            FLP_Move.AutoSize = true;
+            FLP_Move.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
             FLP_Move.Controls.Add(PB_Type);
             FLP_Move.Controls.Add(CB_Move);
             FLP_Move.Controls.Add(TB_PP);
             FLP_Move.Controls.Add(CB_PPUps);
             FLP_Move.Location = new System.Drawing.Point(24, 0);
+            FLP_Move.Margin = new System.Windows.Forms.Padding(0);
             FLP_Move.Name = "FLP_Move";
-            FLP_Move.Size = new System.Drawing.Size(224, 24);
+            FLP_Move.Size = new System.Drawing.Size(238, 26);
             FLP_Move.TabIndex = 18;
             // 
             // PB_Type
@@ -110,15 +115,19 @@ namespace PKHeX.WinForms.Controls
             // MoveChoice
             // 
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Inherit;
+            AutoSize = true;
+            AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
             Controls.Add(PB_Triangle);
             Controls.Add(FLP_Move);
+            Margin = new System.Windows.Forms.Padding(0);
             Name = "MoveChoice";
-            Size = new System.Drawing.Size(248, 24);
+            Size = new System.Drawing.Size(262, 27);
             ((System.ComponentModel.ISupportInitialize)PB_Triangle).EndInit();
             FLP_Move.ResumeLayout(false);
             FLP_Move.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)PB_Type).EndInit();
             ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion

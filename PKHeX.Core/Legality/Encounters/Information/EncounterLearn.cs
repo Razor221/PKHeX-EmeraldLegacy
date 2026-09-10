@@ -49,18 +49,18 @@ public static class EncounterLearn
             return [];
 
         const int maxMoves = 4;
-        Span<ushort> span = stackalloc ushort[maxMoves];
+        var temp = new ushort[maxMoves];
         int ctr = 0;
         foreach (var move in moves)
         {
             var index = StringUtil.FindIndexIgnoreCase(str.movelist, move);
             if (index <= 0)
                 return [];
-            span[ctr++] = (ushort)index;
-            if (ctr >= span.Length)
+            temp[ctr++] = (ushort)index;
+            if (ctr >= temp.Length)
                 break;
         }
-        var moveset = span[..ctr].ToArray();
+        var moveset = temp.AsMemory(0, ctr);
 
         return GetLearn((ushort)speciesID, moveset, form);
     }
@@ -89,6 +89,13 @@ public static class EncounterLearn
             foreach (var enc in encs)
                 yield return enc;
         }
+        if (PersonalTable.ZA.IsPresentInGame(species, form))
+        {
+            var blank = new PA9 { Species = species, Form = form };
+            var encs = EncounterMovesetGenerator.GenerateEncounters(blank, moves, GameVersion.ZA);
+            foreach (var enc in encs)
+                yield return enc;
+        }
         if (PersonalTable.LA.IsPresentInGame(species, form))
         {
             var blank = new PA8 { Species = species, Form = form };
@@ -106,8 +113,8 @@ public static class EncounterLearn
         if (PersonalTable.SWSH.IsPresentInGame(species, form))
         {
             var blank = new PK8 { Species = species, Form = form };
-            var v = vers.Where(z => z <= GameVersion.SH).ToArray();
-            var encs = EncounterMovesetGenerator.GenerateEncounters(blank, moves, v);
+            var version = vers.Where(z => z <= GameVersion.SH).ToArray();
+            var encs = EncounterMovesetGenerator.GenerateEncounters(blank, moves, version);
             foreach (var enc in encs)
                 yield return enc;
             iterated = true;

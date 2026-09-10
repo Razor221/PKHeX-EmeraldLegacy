@@ -123,7 +123,7 @@ public static class MemoryPermissions
     {
         if (pk.IsOriginalMovesetDeleted())
             return true;
-        return enc is EncounterEgg { Generation: < 6 }; // egg moves that are no longer in the movepool
+        return enc is IEncounterEgg { Generation: < 6 }; // egg moves that are no longer in the movepool
     }
 
     public static bool GetCanRelearnMove(PKM pk, ushort move, EntityContext context, EvolutionHistory history, IEncounterTemplate enc)
@@ -161,11 +161,11 @@ public static class MemoryPermissions
         return GetCanKnowMove(enc, move, history, pk, game);
     }
 
-    public static bool GetCanKnowMove(IEncounterTemplate enc, ushort move, EvolutionHistory history, PKM pk, ILearnGroup game)
+    public static bool GetCanKnowMove(IEncounterTemplate enc, ushort move, EvolutionHistory history, PKM pk, ILearnGroup game, LearnOption option = LearnOption.AtAnyTime)
     {
         Span<MoveResult> result = stackalloc MoveResult[1];
         Span<ushort> moves = [move];
-        LearnVerifierHistory.MarkAndIterate(result, moves, enc, pk, history, game, MoveSourceType.All, LearnOption.AtAnyTime);
+        LearnVerifierHistory.MarkAndIterate(result, moves, enc, pk, history, game, MoveSourceType.All, option);
         return result[0].Valid;
     }
 

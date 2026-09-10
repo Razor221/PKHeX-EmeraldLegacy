@@ -8,6 +8,22 @@ namespace PKHeX.Core;
 /// </summary>
 public static class Experience
 {
+    public const int MaxLevel = 100;
+    public const int MinLevel = 1;
+
+    public static bool IsValidLevel(byte level)
+    {
+        // Level must be between 1 and 100, inclusive.
+        return level is >= MinLevel and <= MaxLevel;
+    }
+
+    public static byte ClampLevel(byte level) => level switch
+    {
+        < MinLevel => MinLevel,
+        > MaxLevel => MaxLevel,
+        _ => level,
+    };
+
     /// <summary>
     /// Gets the current level of a species.
     /// </summary>
@@ -31,11 +47,11 @@ public static class Experience
         // Eagerly return 100 if the exp is at max
         // Also avoids overflow issues with the table in the event EXP is out of bounds
         if (exp >= table[^1])
-            return 100;
+            return MaxLevel;
 
         // Most will be below level 50, so start from the bottom
         // Don't bother with binary search, as the table is small
-        byte tl = 1; // Initial Level. Iterate upwards to find the level
+        byte tl = MinLevel; // Initial Level. Iterate upwards to find the level
         while (exp >= table[tl])
             ++tl;
         return tl;
@@ -49,10 +65,10 @@ public static class Experience
     /// <returns>Experience points needed to have specified level.</returns>
     public static uint GetEXP(byte level, byte growth)
     {
-        if (level <= 1)
+        if (level <= MinLevel)
             return 0;
-        if (level > 100)
-            level = 100;
+        if (level > MaxLevel)
+            level = MaxLevel;
 
         var table = GetTable(growth);
         return GetEXP(level, table);
@@ -67,6 +83,21 @@ public static class Experience
     /// <remarks>No bounds checking is performed.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint GetEXP(byte level, ReadOnlySpan<uint> table) => table[level - 1];
+
+    /// <summary>
+    /// Checks if the current Experience points are exactly at the level threshold.
+    /// </summary>
+    /// <param name="exp">Experience points</param>
+    /// <param name="growth">Experience growth rate</param>
+    /// <param name="currentLevel">Calculated current level</param>
+    /// <returns>True if the current amount of Experience points is exactly at the level threshold.</returns>
+    public static bool IsAtLevelThreshold(uint exp, byte growth, out byte currentLevel)
+    {
+        var table = GetTable(growth);
+        currentLevel = GetLevel(exp, table);
+        var min = GetEXP(currentLevel, table);
+        return exp == min;
+    }
 
     /// <summary>
     /// Gets the minimum Experience points for all levels possible.
@@ -93,6 +124,25 @@ public static class Experience
     public static Nature GetNatureVC(uint experience) => (Nature)(experience % 25);
 
     /// <summary>
+    /// Checks if the given nature is valid for the given growth rate and experience when the met level is 2.
+    /// </summary>
+    /// <remarks>
+    /// Used for Generation 1/2 virtual console transfers to Gen7, where level [2,3) doesn't have enough EXP states to yield all 25 natures.
+    /// There are no valid level 1 encounters. Refer to <see cref="GetNatureVC"/>.
+    /// </remarks>
+    /// <param name="growth">Growth rate</param>
+    /// <param name="nature">Nature to check</param>
+    /// <returns><see langword="true"/> if the nature is obtainable.</returns>
+    public static bool IsValidNatureMetLevel2(byte growth, Nature nature) => growth switch
+    {
+        // bitflags of valid natures, [exp_min,exp_max]%25 for level 2
+        0 => (0x01FFFF03u & (1u << (byte)nature)) != 0, // MediumFast -- Can't be Brave, Adamant, Naughty, Bold, Docile, or Relaxed
+        4 => (0x001FFFC0u & (1u << (byte)nature)) != 0, // Fast -- Can't be Gentle, Sassy, Careful, Quirky, Hardy, Lonely, Brave, Adamant, Naughty, or Bold
+        5 => (0x01FFFCFFu & (1u << (byte)nature)) != 0, // Slow -- Can't be Impish or Lax
+        _ => true,
+    };
+
+    /// <summary>
     /// Gets the amount of EXP to be earned until the next level-up occurs.
     /// </summary>
     /// <param name="level">Current Level</param>
@@ -100,7 +150,7 @@ public static class Experience
     /// <returns>EXP to level up</returns>
     public static uint GetEXPToLevelUp(byte level, byte growth)
     {
-        if (level >= 100)
+        if (level >= MaxLevel)
             return 0;
         var table = GetTable(growth);
         var current = GetEXP(level, table);
@@ -117,7 +167,7 @@ public static class Experience
     /// <returns>Percentage [0,1.00)</returns>
     public static double GetEXPToLevelUpPercentage(byte level, uint exp, byte growth)
     {
-        if (level >= 100)
+        if (level >= MaxLevel)
             return 0;
 
         var table = GetTable(growth);

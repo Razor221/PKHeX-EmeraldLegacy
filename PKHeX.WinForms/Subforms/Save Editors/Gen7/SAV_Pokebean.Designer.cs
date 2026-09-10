@@ -1,4 +1,6 @@
-﻿namespace PKHeX.WinForms
+using PKHeX.WinForms.Controls;
+
+namespace PKHeX.WinForms
 {
     partial class SAV_Pokebean
     {
@@ -28,7 +30,7 @@
         /// </summary>
         private void InitializeComponent()
         {
-            dgv = new System.Windows.Forms.DataGridView();
+            dgv = new DoubleBufferedDataGridView();
             B_Save = new System.Windows.Forms.Button();
             B_Cancel = new System.Windows.Forms.Button();
             B_All = new System.Windows.Forms.Button();
@@ -122,14 +124,14 @@
             MinimumSize = new System.Drawing.Size(277, 340);
             Name = "SAV_Pokebean";
             StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            Text = "‎Poké Beans Editor";
+            Text = "Poké Beans Editor";
             ((System.ComponentModel.ISupportInitialize)dgv).EndInit();
             ResumeLayout(false);
         }
 
         #endregion
 
-        private System.Windows.Forms.DataGridView dgv;
+        private DoubleBufferedDataGridView dgv;
         private System.Windows.Forms.Button B_Save;
         private System.Windows.Forms.Button B_Cancel;
         private System.Windows.Forms.Button B_All;

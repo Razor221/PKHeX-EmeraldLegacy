@@ -4,7 +4,7 @@ namespace PKHeX.Core;
 /// Generation 7 Static Encounter
 /// </summary>
 public sealed record EncounterStatic7(GameVersion Version)
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PK7>, IRelearn, IEncounterFormRandom, IFlawlessIVCount, IFatefulEncounterReadOnly, IFixedGender, IFixedNature, IFixedIVSet
+    : IEncounterable, IEncounterMatch, IEncounterConvertible<PK7>, IRelearn, IMoveset, IEncounterFormRandom, IFlawlessIVCount, IFatefulEncounterReadOnly, IFixedGender, IFixedNature, IFixedIVSet
 {
     public byte Generation => 7;
     public EntityContext Context => EntityContext.Gen7;
@@ -16,6 +16,7 @@ public sealed record EncounterStatic7(GameVersion Version)
     public bool IsShiny => false;
 
     public Moveset Relearn { get; init; }
+    public Moveset Moves => Relearn;
     public IndividualValueSet IVs { get; init; }
     public ushort Location { get; init; }
     public ushort EggLocation { get; init; }
@@ -53,13 +54,14 @@ public sealed record EncounterStatic7(GameVersion Version)
 
     public PK7 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage789((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.USUM[Species, Form];
+        var geo = tr.GetRegionOrigin(language);
         var pk = new PK7
         {
             Species = Species,
-            Form = GetWildForm(Form, tr),
+            Form = Form != FormVivillon ? Form : Vivillon3DS.GetPattern(geo.Country, geo.Region),
             CurrentLevel = LevelMin,
             MetLocation = Location,
             MetLevel = LevelMin,
@@ -69,21 +71,20 @@ public sealed record EncounterStatic7(GameVersion Version)
 
             ID32 = tr.ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = tr.Gender,
             OriginalTrainerName = tr.OT,
 
             OriginalTrainerFriendship = pi.BaseFriendship,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
+
+            ConsoleRegion = geo.ConsoleRegion,
+            Country = geo.Country,
+            Region = geo.Region,
         };
         if (RibbonWishing)
             pk.RibbonWishing = true;
-
-        if (tr is IRegionOrigin r)
-            r.CopyRegionOrigin(pk);
-        else
-            pk.SetDefaultRegionOrigins(lang);
 
         if (IsEgg)
         {
@@ -95,42 +96,25 @@ public sealed record EncounterStatic7(GameVersion Version)
         }
 
         if (Relearn.HasMoves)
+        {
+            pk.SetMoves(Relearn);
             pk.SetRelearnMoves(Relearn);
-        EncounterUtil.SetEncounterMoves(pk, version, LevelMin);
+        }
+        else
+        {
+            EncounterUtil.SetEncounterMoves(pk, version, LevelMin);
+        }
         SetPINGA(pk, criteria, pi);
         pk.ResetPartyStats();
 
         return pk;
     }
 
-    private static byte GetWildForm(byte form, ITrainerInfo tr)
-    {
-        if (form == FormVivillon)
-        {
-            if (tr is IRegionOrigin r)
-                return Vivillon3DS.GetPattern(r.Country, r.Region);
-            if (tr.Language == 1)
-                return Vivillon3DS.GetPattern(1, 0);
-            return Vivillon3DS.GetPattern(49, 7); // USA, California
-        }
-        return form;
-    }
-
-    private void SetPINGA(PK7 pk, EncounterCriteria criteria, PersonalInfo7 pi)
+    private void SetPINGA(PK7 pk, in EncounterCriteria criteria, PersonalInfo7 pi)
     {
         var rnd = Util.Rand;
         pk.EncryptionConstant = rnd.Rand32();
-        pk.PID = rnd.Rand32();
-        if (pk.IsShiny)
-        {
-            if (Shiny == Shiny.Never || (Shiny != Shiny.Always && !criteria.Shiny.IsShiny()))
-                pk.PID ^= 0x1000_0000;
-        }
-        else if (Shiny == Shiny.Always || (Shiny != Shiny.Never && criteria.Shiny.IsShiny()))
-        {
-            var low = pk.PID & 0xFFFF;
-            pk.PID = ((low ^ pk.TID16 ^ pk.SID16) << 16) | low;
-        }
+        pk.PID = EncounterUtil.GetRandomPID(pk, rnd, criteria.Shiny);
 
         if (IVs.IsSpecified)
             criteria.SetRandomIVs(pk, IVs);
@@ -156,7 +140,7 @@ public sealed record EncounterStatic7(GameVersion Version)
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
+        if (!IsMatchEggLocationInternal(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -168,7 +152,7 @@ public sealed record EncounterStatic7(GameVersion Version)
             return false;
         if (IVs.IsSpecified && !Legal.GetIsFixedIVSequenceValidSkipRand(IVs, pk))
             return false;
-        if (Nature != Nature.Random && pk.Nature != Nature)
+        if (Nature.IsFixed && pk.Nature != Nature)
             return false;
         if (FlawlessIVCount != 0 && pk.FlawlessIVCount < FlawlessIVCount)
             return false;
@@ -184,19 +168,18 @@ public sealed record EncounterStatic7(GameVersion Version)
 
     private bool IsMatchLocation(PKM pk)
     {
-        if (IsEgg)
+        var met = pk.MetLocation;
+        if (met == Location)
             return true;
-
-        return pk.MetLocation == Location;
+        if (IsEgg)
+            return !pk.IsEgg || met == Locations.LinkTrade6;
+        return false;
     }
 
-    private bool IsMatchEggLocation(PKM pk)
+    private bool IsMatchEggLocationInternal(PKM pk)
     {
         if (!IsEgg)
-        {
-            var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-            return pk.EggLocation == expect;
-        }
+            return this.IsMatchEggLocation(pk);
 
         // Gift Eevee edge case
         if (EggLocation == Locations.Daycare5 && !Relearn.HasMoves && pk.RelearnMove1 != 0)
@@ -207,11 +190,7 @@ public sealed record EncounterStatic7(GameVersion Version)
             return eggLoc == EggLocation || eggLoc == Locations.LinkTrade6;
 
         // Unhatched:
-        if (eggLoc != EggLocation)
-            return false;
-        if (pk.MetLocation is not (0 or Locations.LinkTrade6))
-            return false;
-        return true;
+        return eggLoc == EggLocation;
     }
 
     private bool IsMatchForm(PKM pk, EvoCriteria evo)

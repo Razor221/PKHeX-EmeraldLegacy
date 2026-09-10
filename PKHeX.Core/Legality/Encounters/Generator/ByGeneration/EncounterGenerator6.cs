@@ -9,16 +9,16 @@ public sealed class EncounterGenerator6 : IEncounterGenerator
     public static readonly EncounterGenerator6 Instance = new();
     public bool CanGenerateEggs => true;
 
-    public IEnumerable<IEncounterable> GetPossible(PKM _, EvoCriteria[] chain, GameVersion game, EncounterTypeGroup groups)
+    public IEnumerable<IEncounterable> GetPossible(PKM _, EvoCriteria[] chain, GameVersion version, EncounterTypeGroup groups)
     {
-        var iterator = new EncounterPossible6(chain, groups, game);
+        var iterator = new EncounterPossible6(chain, groups, version);
         foreach (var enc in iterator)
             yield return enc;
     }
 
     public IEnumerable<IEncounterable> GetEncounters(PKM pk, LegalInfo info)
     {
-        var chain = EncounterOrigin.GetOriginChain(pk, 6);
+        var chain = EncounterOrigin.GetOriginChain(pk, Generation, Context);
         return GetEncounters(pk, chain, info);
     }
 
@@ -31,7 +31,7 @@ public sealed class EncounterGenerator6 : IEncounterGenerator
 
     private const byte Generation = 6;
     private const EntityContext Context = EntityContext.Gen6;
-    private const byte EggLevel = EggStateLegality.EggMetLevel;
+    private const byte EggLevel = EncounterEgg6.Level;
 
     private static GameVersion GetOtherGamePair(GameVersion version)
     {
@@ -40,14 +40,16 @@ public sealed class EncounterGenerator6 : IEncounterGenerator
         // 26 -> 24 (AS ->  X)
         // 27 -> 25 (OR ->  Y)
         // ReSharper disable once BitwiseOperatorOnEnumWithoutFlags
+#pragma warning disable RCS1130, RCS1257 // Bitwise operation on enum without Flags attribute.
         return version ^ (GameVersion)2;
+#pragma warning restore
     }
 
-    private static EncounterEgg CreateEggEncounter(ushort species, byte form, GameVersion version)
+    private static EncounterEgg6 CreateEggEncounter(ushort species, byte form, GameVersion version)
     {
-        if (FormInfo.IsBattleOnlyForm(species, form, Generation) || species is (int)Species.Rotom or (int)Species.Castform)
+        if (FormInfo.IsBattleOnlyForm(species, form, Generation) || species is (int)Species.Rotom or (int)Species.Castform or (int)Species.Furfrou)
             form = FormInfo.GetOutOfBattleForm(species, form, Generation);
-        return new EncounterEgg(species, form, EggLevel, Generation, version, Context);
+        return new EncounterEgg6(species, form, version);
     }
 
     private static (ushort Species, byte Form) GetBaby(EvoCriteria lowest)
@@ -55,7 +57,7 @@ public sealed class EncounterGenerator6 : IEncounterGenerator
         return EvolutionTree.Evolves6.GetBaseSpeciesForm(lowest.Species, lowest.Form);
     }
 
-    public static bool TryGetEgg(ReadOnlySpan<EvoCriteria> chain, GameVersion version, [NotNullWhen(true)] out EncounterEgg? result)
+    public static bool TryGetEgg(ReadOnlySpan<EvoCriteria> chain, GameVersion version, [NotNullWhen(true)] out EncounterEgg6? result)
     {
         result = null;
         var devolved = chain[^1];
@@ -81,9 +83,9 @@ public sealed class EncounterGenerator6 : IEncounterGenerator
         return true;
     }
 
-    public static EncounterEgg MutateEggTrade(EncounterEgg egg) => egg with { Version = GetOtherGamePair(egg.Version) };
+    public static EncounterEgg6 MutateEggTrade(EncounterEgg6 egg) => egg with { Version = GetOtherGamePair(egg.Version) };
 
-    public static bool TryGetSplit(EncounterEgg other, ReadOnlySpan<EvoCriteria> chain, [NotNullWhen(true)] out EncounterEgg? result)
+    public static bool TryGetSplit(EncounterEgg6 other, ReadOnlySpan<EvoCriteria> chain, [NotNullWhen(true)] out EncounterEgg6? result)
     {
         result = null;
         // Check for split-breed

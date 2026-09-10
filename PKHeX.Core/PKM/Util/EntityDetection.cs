@@ -4,6 +4,9 @@ using static PKHeX.Core.PokeCrypto;
 
 namespace PKHeX.Core;
 
+/// <summary>
+/// Logic for detecting a <see cref="PKM"/> entity from a byte array or length.
+/// </summary>
 public static class EntityDetection
 {
     /// <summary>
@@ -23,32 +26,54 @@ public static class EntityDetection
         SIZE_8ASTORED or SIZE_8APARTY
         ;
 
-    public static bool IsPresentGB(ReadOnlySpan<byte> data) => data[0] != 0; // Species non-zero
-    public static bool IsPresentGC(ReadOnlySpan<byte> data) => ReadUInt16BigEndian(data) != 0; // Species non-zero
-    public static bool IsPresentGBA(ReadOnlySpan<byte> data) => (data[0x13] & 0xFB) == 2; // ignore egg flag, must be FlagHasSpecies.
-    public static bool IsPresentSAV4Ranch(ReadOnlySpan<byte> data) => ReadUInt32LittleEndian(data) != 0 && ReadUInt32BigEndian(data) != 0x28; // Species non-zero, ignore file end marker
+    /// <summary>
+    /// Checks the first byte of the span to see if the species is non-zero.
+    /// </summary>
+    public static bool IsPresentGB(ReadOnlySpan<byte> data) => data[0] != 0;
 
+    /// <summary>
+    /// Checks the first two bytes of the span to see if the species is non-zero.
+    /// </summary>
+    public static bool IsPresentGC(ReadOnlySpan<byte> data) => ReadUInt16BigEndian(data) != 0;
+
+    /// <summary>
+    /// Checks the flag status of the span to see if it has the <see cref="PK3.FlagHasSpecies"/> indicator.
+    /// </summary>
+    public static bool IsPresentGBA(ReadOnlySpan<byte> data) => (data[0x13] & 0xFB) == 2; // ignore egg flag, must be FlagHasSpecies.
+
+    /// <summary>
+    /// Checks if the species is non-zero and the entity PID is not the "file end" marker of the save file.
+    /// </summary>
+    /// <remarks>
+    /// Only useful when called from a <see cref="SAV4Ranch"/> file, not for a <see cref="PK4"/> entity dump.
+    /// </remarks>
+    public static bool IsPresentSAV4Ranch(ReadOnlySpan<byte> data) => IsPresent(data) && ReadUInt32BigEndian(data) != 0x28; // Species non-zero, ignore file end marker
+
+    /// <summary>
+    /// Checks the PID and species of the Gen4+ entity to determine if it is present.
+    /// </summary>
     public static bool IsPresent(ReadOnlySpan<byte> data)
     {
         if (ReadUInt32LittleEndian(data) != 0) // PID
-            return true;
-        ushort species = ReadUInt16LittleEndian(data[8..]);
-        return species != 0;
+            return true; // Empty slots are 0x00000000 PID.
+
+        // A PID of 0x00000000 is possible to naturally occur; encryption/shuffle does not impact the first 2 bytes (species).
+        // The data occupying the species field can be immediately read; non-zero confirms species is present.
+        return ReadUInt16LittleEndian(data[8..]) != 0;
     }
 
     /// <summary>
-    /// Gets a function that can check a byte array (at an offset) to see if a <see cref="PKM"/> is possibly present.
+    /// Gets a function that can check a span to see if a <see cref="PKM"/> is possibly present.
     /// </summary>
-    /// <param name="blank"></param>
-    /// <returns>Function that checks if a byte array (at an offset) has a <see cref="PKM"/> present</returns>
-    public static Func<byte[], bool> GetFuncIsPresent(PKM blank)
+    /// <param name="blank">Implementation detail of the desired type to check for.</param>
+    /// <returns>Function that checks if a span has a <see cref="PKM"/> present</returns>
+    public static Func<ReadOnlySpan<byte>, bool> GetFuncIsPresent(PKM blank) => blank switch
     {
-        if (blank.Format >= 4)
-            return x => IsPresent(x);
-        if (blank.Format <= 2)
-            return x => IsPresentGB(x);
-        if (blank.Data.Length <= SIZE_3PARTY)
-            return x => IsPresentGBA(x);
-        return x => IsPresentGC(x);
-    }
+        { Format: >= 4 } => IsPresent,
+        { Format: <= 2 } => IsPresentGB,
+
+        // Gen3; ^above handles all other formats.
+        PK3 => IsPresentGBA,
+        _ => IsPresentGC,
+    };
 }

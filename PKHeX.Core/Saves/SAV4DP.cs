@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -16,7 +15,7 @@ public sealed class SAV4DP : SAV4Sinnoh
         Dex = new Zukan4(this, GeneralBuffer[PokeDex..]);
     }
 
-    public SAV4DP(byte[] data) : base(data, GeneralSize, StorageSize, GeneralSize)
+    public SAV4DP(Memory<byte> data) : base(data, GeneralSize, StorageSize, GeneralSize)
     {
         Initialize();
         Mystery = new MysteryBlock4DP(this, GeneralBuffer.Slice(OffsetMystery, MysteryBlock4DP.Size));
@@ -28,7 +27,7 @@ public sealed class SAV4DP : SAV4Sinnoh
     public override Zukan4 Dex { get; }
     public override MysteryBlock4DP Mystery { get; }
 
-    protected override SAV4 CloneInternal4() => State.Exportable ? new SAV4DP((byte[])Data.Clone()) : new SAV4DP();
+    protected override SAV4 CloneInternal4() => State.Exportable ? new SAV4DP(Data.ToArray()) : new SAV4DP();
     public override GameVersion Version { get => GameVersion.DP; set { } }
     public override PersonalTable4 Personal => PersonalTable.DP;
     public override ReadOnlySpan<ushort> HeldItems => Legal.HeldItems_DP;
@@ -39,7 +38,7 @@ public sealed class SAV4DP : SAV4Sinnoh
 
     protected override BlockInfo4[] ExtraBlocks =>
     [
-        new BlockInfo4(0, 0x20000, 0x2AC0), // Hall of Fame
+        new(0, 0x20000, 0x2AC0), // Hall of Fame
     ];
 
     private void Initialize()
@@ -62,10 +61,10 @@ public sealed class SAV4DP : SAV4Sinnoh
         OFS_Record = 0x5F08;
         OFS_Chatter = 0x61CC;
         Geonet = 0x96D8;
-        WondercardFlags = 0xA6D0;
         OFS_HONEY = 0x72E4;
         OFS_UG_Stats = 0x3A2C;
         OFS_UG_Items = 0x42B0;
+        OFS_Groups = 0x5374;
 
         PoketchStart = 0x114C;
         Seal = 0x6178;
@@ -91,32 +90,13 @@ public sealed class SAV4DP : SAV4Sinnoh
     }
     #endregion
 
-    public override IReadOnlyList<InventoryPouch> Inventory
-    {
-        get
-        {
-            var info = ItemStorage4DP.Instance;
-            InventoryPouch[] pouch =
-            [
-                new InventoryPouch4(InventoryType.Items, info, 999, 0x624),
-                new InventoryPouch4(InventoryType.KeyItems, info, 1, 0x8B8),
-                new InventoryPouch4(InventoryType.TMHMs, info, 99, 0x980),
-                new InventoryPouch4(InventoryType.MailItems, info, 999, 0xB10),
-                new InventoryPouch4(InventoryType.Medicine, info, 999, 0xB40),
-                new InventoryPouch4(InventoryType.Berries, info, 999, 0xBE0),
-                new InventoryPouch4(InventoryType.Balls, info, 999, 0xCE0),
-                new InventoryPouch4(InventoryType.BattleItems, info, 999, 0xD1C),
-            ];
-            return pouch.LoadAll(General);
-        }
-        set => value.SaveAll(General);
-    }
+    public override PlayerBag4DP Inventory => new(this);
 
     public override int M { get => ReadUInt16LittleEndian(General[0x1238..]); set => WriteUInt16LittleEndian(General[0x1238..], (ushort)value); }
     public override int X { get => ReadUInt16LittleEndian(General[0x1240..]); set => WriteUInt16LittleEndian(General[0x1240..], (ushort)(X2 = value)); }
     public override int Y { get => ReadUInt16LittleEndian(General[0x1244..]); set => WriteUInt16LittleEndian(General[0x1244..], (ushort)(Y2 = value)); }
 
-    public override Span<byte> RivalTrash
+    public override Span<byte> RivalNameTrash
     {
         get => General.Slice(0x25A8, MaxStringLengthTrainer * 2);
         set { if (value.Length == MaxStringLengthTrainer * 2) value.CopyTo(General[0x25A8..]); }
@@ -126,10 +106,11 @@ public sealed class SAV4DP : SAV4Sinnoh
     public override int Y2 { get => ReadUInt16LittleEndian(General[0x25FE..]); set => WriteUInt16LittleEndian(General[0x25FE..], (ushort)value); }
     public override int Z { get => ReadUInt16LittleEndian(General[0x2602..]); set => WriteUInt16LittleEndian(General[0x2602..], (ushort)value); }
 
-    public override uint SafariSeed { get => ReadUInt32LittleEndian(General[0x53C4..]); set => WriteUInt32LittleEndian(General[0x53C4..], value); }
-    public override uint SwarmSeed { get => ReadUInt32LittleEndian(General[0x53C8..]); set => WriteUInt32LittleEndian(General[0x53C8..], value); }
+    public override uint SafariSeed { get => ReadUInt32LittleEndian(General[0x72D0..]); set => WriteUInt32LittleEndian(General[0x72D0..], value); }
+    public override uint SwarmSeed { get => ReadUInt32LittleEndian(General[0x72D4..]); set => WriteUInt32LittleEndian(General[0x72D4..], value); }
     public override uint SwarmMaxCountModulo => 28;
     public override int BP { get => ReadUInt16LittleEndian(General[0x65F8..]); set => WriteUInt16LittleEndian(General[0x65F8..], (ushort)value); }
+    public override uint BattleTowerSeed { get => ReadUInt32LittleEndian(General[0x65FC..]); set => WriteUInt32LittleEndian(General[0x65FC..], value); }
 
     protected override ReadOnlySpan<ushort> TreeSpecies =>
     [

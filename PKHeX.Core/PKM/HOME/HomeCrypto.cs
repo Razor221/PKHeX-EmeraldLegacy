@@ -13,6 +13,7 @@ public static class HomeCrypto
     public const int Version1 = 1;
     public const int Version2 = 2;
     public const int Version3 = 3;
+    public const int Version4 = 4;
 
     public const int SIZE_1HEADER = 0x10; // 16
 
@@ -31,14 +32,22 @@ public static class HomeCrypto
     public const int SIZE_2GAME_PK9 = 0x3D; // 61
     public const int SIZE_2STORED = 0x23A; // 570
 
-    public const int SIZE_3GAME_PK9 = 0x3D + 0xD; // 61
+    public const int SIZE_3GAME_PK9 = 0x3D + 0xD; // 74
     public const int SIZE_3STORED = 0x247; // 583
 
-    public const int SIZE_STORED = SIZE_3STORED;
-    public const int SIZE_CORE = SIZE_2CORE;
-    public const int VersionLatest = Version3;
+    public const int SIZE_4GAME_PA9 = 0x40; // 64 TODO HOME ZA
+    public const int SIZE_4GAME_PC9 = 0x19; // 25
+    public const int SIZE_4STORED = 0x2A6; // 702 TODO HOME ZA
 
-    public static bool IsKnownVersion(ushort version) => version is Version1 or Version2 or Version3;
+    /// <summary> Latest maximum size of a Pokémon Home entity. </summary>
+    public const int SIZE_STORED = SIZE_4STORED;
+    /// <summary> Latest maximum size of a Pokémon Home entity's core data shared with all side-games. </summary>
+    public const int SIZE_CORE = SIZE_2CORE;
+    /// <summary> Latest Version identifier stored in the header. </summary>
+    public const int VersionLatest = Version4;
+
+    public static bool IsKnownVersion(ushort version) => version is Version1 or Version2 or Version3 or Version4;
+    public static bool IsPlausibleSize(long length) => length is > (SIZE_1HEADER + SIZE_1CORE) and <= SIZE_STORED;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetEncryptionKey(Span<byte> key, ulong seed)
@@ -99,9 +108,9 @@ public static class HomeCrypto
     /// Decrypts the input <see cref="data"/> data into a new array if it is encrypted, and updates the reference.
     /// </summary>
     /// <remarks>Format encryption check</remarks>
-    public static void DecryptIfEncrypted(ref byte[] data)
+    public static void DecryptIfEncrypted(ref Memory<byte> data)
     {
-        var span = data.AsSpan();
+        var span = data.Span;
         var format = ReadUInt16LittleEndian(span);
         if (IsKnownVersion(format))
         {
@@ -144,6 +153,7 @@ public static class HomeCrypto
         Version1 => IsEncryptedCore1(data),
         Version2 => IsEncryptedCore2(data),
         Version3 => IsEncryptedCore3(data),
+        Version4 => IsEncryptedCore4(data),
         _ => throw new ArgumentException($"Unrecognized format: {format}"),
     };
 
@@ -181,6 +191,7 @@ public static class HomeCrypto
     }
 
     private static bool IsEncryptedCore3(ReadOnlySpan<byte> data) => IsEncryptedCore2(data); // Same struct as Core version 2.
+    private static bool IsEncryptedCore4(ReadOnlySpan<byte> data) => IsEncryptedCore2(data); // Same struct as Core version 2.
 
     /// <summary>
     /// Gets the checksum of a Pokémon's AES-encrypted data.

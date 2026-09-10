@@ -35,7 +35,7 @@ public abstract class GBPKML : GBPKM
         NicknameTrash.Fill(StringConverter1.TerminatorCode);
     }
 
-    protected GBPKML(byte[] data, bool jp = false) : base(data)
+    protected GBPKML(Memory<byte> data, bool jp = false) : base(data)
     {
         int strLen = jp ? StringLengthJapanese : StringLengthNotJapan;
 
@@ -88,7 +88,23 @@ public abstract class GBPKML : GBPKM
     {
         // Reset the destination buffer based on the termination style of the existing string.
         bool zeroed = exist.Contains<byte>(0);
-        StringConverterOption converterOption = (zeroed) ? StringConverterOption.ClearZero : StringConverterOption.Clear50;
-        SetString(exist, value, value.Length, converterOption);
+        var option = zeroed ? StringConverterOption.ClearZero : StringConverterOption.Clear50;
+        SetString(exist, value, value.Length, option);
+    }
+
+    public override bool EqualsStored(PKM pk)
+    {
+        var storedSize = Format == 1 ? PokeCrypto.SIZE_1STORED : PokeCrypto.SIZE_2STORED;
+        var self = Data[..storedSize];
+        var other = pk.Data[..storedSize];
+        if (!self.SequenceEqual(other))
+            return false;
+
+        // Compare string buffers as well, since they are stored separately in Gen 1 & 2 formats.
+        if (!NicknameTrash.SequenceEqual(pk.NicknameTrash))
+            return false;
+        if (!OriginalTrainerTrash.SequenceEqual(pk.OriginalTrainerTrash))
+            return false;
+        return true;
     }
 }

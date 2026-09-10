@@ -50,14 +50,15 @@ public sealed record EncounterStatic6(GameVersion Version)
 
     public PK6 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language, version);
         var pi = PersonalTable.AO[Species];
         var rnd = Util.Rand;
+        var geo = tr.GetRegionOrigin(language);
         var pk = new PK6
         {
             EncryptionConstant = rnd.Rand32(),
-            PID = rnd.Rand32(),
+            PID = EncounterUtil.GetRandomPID(tr, rnd, Shiny, criteria.Shiny),
             Species = Species,
             Form = Form,
             CurrentLevel = LevelMin,
@@ -68,13 +69,17 @@ public sealed record EncounterStatic6(GameVersion Version)
             FatefulEncounter = FatefulEncounter,
             ID32 = tr.ID32,
             Version = version,
-            Language = lang,
+            Language = language,
             OriginalTrainerGender = tr.Gender,
             OriginalTrainerName = tr.OT,
 
             OriginalTrainerFriendship = pi.BaseFriendship,
 
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
+
+            ConsoleRegion = geo.ConsoleRegion,
+            Country = geo.Country,
+            Region = geo.Region,
         };
 
         if (IsEgg)
@@ -85,11 +90,6 @@ public sealed record EncounterStatic6(GameVersion Version)
             pk.EggLocation = EggLocation;
             pk.EggMetDate = pk.MetDate;
         }
-
-        if (tr is IRegionOrigin r)
-            r.CopyRegionOrigin(pk);
-        else
-            pk.SetDefaultRegionOrigins(lang);
 
         if (Moves.HasMoves)
             pk.SetMoves(Moves);
@@ -104,7 +104,7 @@ public sealed record EncounterStatic6(GameVersion Version)
         return pk;
     }
 
-    private void SetPINGA(PK6 pk, EncounterCriteria criteria, PersonalInfo6AO pi)
+    private void SetPINGA(PK6 pk, in EncounterCriteria criteria, PersonalInfo6AO pi)
     {
         if (pk.IsShiny)
         {
@@ -141,7 +141,7 @@ public sealed record EncounterStatic6(GameVersion Version)
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
+        if (!IsMatchEggLocationInternal(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -153,7 +153,7 @@ public sealed record EncounterStatic6(GameVersion Version)
             return false;
         if (IVs.IsSpecified && !Legal.GetIsFixedIVSequenceValidSkipRand(IVs, pk))
             return false;
-        if (Nature != Nature.Random && pk.Nature != Nature)
+        if (Nature.IsFixed && pk.Nature != Nature)
             return false;
         if (FlawlessIVCount != 0 && pk.FlawlessIVCount < FlawlessIVCount)
             return false;
@@ -169,26 +169,25 @@ public sealed record EncounterStatic6(GameVersion Version)
 
     private bool IsMatchLocation(PKM pk)
     {
-        if (IsEgg)
-            return true;
         var met = pk.MetLocation;
         if (met == Location)
             return true;
 
-        if (Species != (int)Core.Species.Pikachu)
-            return false;
+        if (IsEgg)
+            return !pk.IsEgg || met == Locations.LinkTrade6;
 
-        // Cosplay Pikachu is given from multiple locations
-        return met is 180 or 186 or 194;
+        // Cosplay Pikachu is given from multiple other locations and can change form after; permit all.
+        if (Species == (int)Core.Species.Pikachu)
+            return met is 180 or 186 or 194;
+
+        return false;
+
     }
 
-    private bool IsMatchEggLocation(PKM pk)
+    private bool IsMatchEggLocationInternal(PKM pk)
     {
         if (!IsEgg)
-        {
-            var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-            return pk.EggLocation == expect;
-        }
+            return this.IsMatchEggLocation(pk);
 
         var eggLoc = pk.EggLocation;
         if (!pk.IsEgg) // hatched

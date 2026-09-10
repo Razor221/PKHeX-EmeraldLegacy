@@ -33,13 +33,13 @@ public readonly ref struct MemeKey
         if (key.CanSign())
             D = new BigInteger(GetMemeDataSign(key), isUnsigned: true, isBigEndian: true);
         else
-            D = default;
+            D = BigInteger.Zero;
     }
 
     /// <summary>
     /// Indicates if this key can be used to resign messages.
     /// </summary>
-    public bool CanResign => D != default;
+    public bool CanResign => D != 0;
 
     public const int SignatureLength = 0x60;
     private const int chunk = 0x10;

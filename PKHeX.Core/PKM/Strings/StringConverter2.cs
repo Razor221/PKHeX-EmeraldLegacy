@@ -2,6 +2,10 @@ using System;
 
 namespace PKHeX.Core;
 
+/// <summary>
+/// Logic for converting a <see cref="string"/> for Generation 2.
+/// </summary>
+/// <remarks>Slight differences when compared to <seealso cref="StringConverter1"/>.</remarks>
 public static class StringConverter2
 {
     public const byte TerminatorCode = StringConverter1.TerminatorCode;
@@ -14,9 +18,11 @@ public static class StringConverter2
     public const char TradeOT = StringConverter1.TradeOT;
     public const char LineBreak = '⏎'; // Mail
 
-    public static bool GetIsJapanese(ReadOnlySpan<char> str) => AllJapanese(str);
-
-    private static bool AllJapanese(ReadOnlySpan<char> str)
+    /// <summary>
+    /// Quick check if the input string is entirely Japanese characters.
+    /// </summary>
+    /// <remarks><seealso cref="StringConverter1.GetIsJapanese(ReadOnlySpan{char})"/>. This also adds ? and !.</remarks>
+    public static bool GetIsJapanese(ReadOnlySpan<char> str)
     {
         foreach (var x in str)
         {
@@ -24,7 +30,7 @@ public static class StringConverter2
                 return false;
         }
         return true;
-        static bool IsJapanese(char c) => c is >= '\u3000' and <= '\u30FC';
+        static bool IsJapanese(char c) => c is (>= '\u3000' and <= '\u30FC') or ('？' or '！');
     }
 
     public static bool GetIsEnglish(ReadOnlySpan<char> str) => !GetIsJapanese(str);
@@ -50,6 +56,9 @@ public static class StringConverter2
     /// <returns>Decoded string.</returns>
     public static string GetString(ReadOnlySpan<byte> data, int language)
     {
+        if (language == (int)LanguageID.Korean || (language != (int)LanguageID.Japanese && StringConverter2KOR.IsHangul(data)))
+            return StringConverter2KOR.GetString(data);
+
         Span<char> result = stackalloc char[data.Length];
         int length = LoadString(data, result, language);
         return new string(result[..length]);
@@ -62,6 +71,9 @@ public static class StringConverter2
     /// <returns>Character count loaded.</returns>
     public static int LoadString(ReadOnlySpan<byte> data, Span<char> result, int language)
     {
+        if (language == (int)LanguageID.Korean || (language != (int)LanguageID.Japanese && StringConverter2KOR.IsHangul(data)))
+            return StringConverter2KOR.LoadString(data, result);
+
         if (data.Length == 0)
             return 0;
         if (data[0] == TradeOTCode) // In-game Trade
@@ -103,6 +115,9 @@ public static class StringConverter2
     public static int SetString(Span<byte> destBuffer, ReadOnlySpan<char> value, int maxLength, int language,
         StringConverterOption option = StringConverterOption.Clear50)
     {
+        if (language == (int)LanguageID.Korean || (language != (int)LanguageID.Japanese && StringConverter2KOR.IsHangul(value)))
+            return StringConverter2KOR.SetString(destBuffer, value, maxLength, option);
+
         ConditionBuffer(destBuffer, option);
         if (value.Length == 0)
             return 0;
@@ -336,7 +351,7 @@ public static class StringConverter2
         return new string(inflated[..index]);
     }
 
-    private static bool TryGetLigatureIndex(char c, out int index) => -1 != (index = LigatureList.IndexOf(c));
+    private static bool TryGetLigatureIndex(char c, out int index) => (index = LigatureList.IndexOf(c)) != -1;
     private static ReadOnlySpan<char> LigatureList => [LI0, LI1, LI2, LI3, LI4, LI5, LI6, LI7, LI8, LI9, LIA, LIB];
     private static char GetLigature(int ligatureIndex) => LigatureList[ligatureIndex];
 

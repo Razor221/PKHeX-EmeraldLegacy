@@ -6,7 +6,7 @@ using static PKHeX.Core.SlotType8b;
 namespace PKHeX.Core;
 
 /// <summary>
-/// <see cref="GameVersion.BDSP"/> encounter area
+/// <see cref="EntityContext.Gen8b"/> encounter area
 /// </summary>
 public sealed record EncounterArea8b : IEncounterArea<EncounterSlot8b>, IAreaLocation
 {
@@ -16,19 +16,19 @@ public sealed record EncounterArea8b : IEncounterArea<EncounterSlot8b>, IAreaLoc
     public readonly ushort Location;
     public readonly SlotType8b Type;
 
-    public static EncounterArea8b[] GetAreas(BinLinkerAccessor input, [ConstantExpected] GameVersion game)
+    public static EncounterArea8b[] GetAreas(BinLinkerAccessor input, [ConstantExpected] GameVersion version)
     {
         var result = new EncounterArea8b[input.Length];
         for (int i = 0; i < result.Length; i++)
-            result[i] = new EncounterArea8b(input[i], game);
+            result[i] = new EncounterArea8b(input[i], version);
         return result;
     }
 
-    private EncounterArea8b(ReadOnlySpan<byte> data, [ConstantExpected] GameVersion game)
+    private EncounterArea8b(ReadOnlySpan<byte> data, [ConstantExpected] GameVersion version)
     {
         Location = ReadUInt16LittleEndian(data);
         Type = (SlotType8b)data[2];
-        Version = game;
+        Version = version;
 
         Slots = ReadSlots(data[4..]);
     }

@@ -69,6 +69,11 @@ public enum GameVersion : byte
     /// Pokémon SoulSilver (NDS)
     /// </summary>
     SS = 8,
+
+    /// <summary>
+    /// Pokémon Battle Revolution (Wii)
+    /// </summary>
+    BATREV = 16,
     #endregion
 
     #region Gen5
@@ -228,6 +233,16 @@ public enum GameVersion : byte
     /// Pokémon Violet (NX)
     /// </summary>
     VL = 51,
+
+    /// <summary>
+    /// Pokémon Legends: (Z-A) (NX)
+    /// </summary>
+    ZA = 52,
+
+    /// <summary>
+    /// Pokémon Champions (NX)
+    /// </summary>
+    CP = 53,
     #endregion
 
     // The following values are not actually stored values in pk data,
@@ -329,11 +344,6 @@ public enum GameVersion : byte
     /// <see cref="HG"/>
     /// <see cref="SS"/>
     HGSS,
-
-    /// <summary>
-    /// Pokémon Battle Revolution [<see cref="SAV4BR"/>] identifier.
-    /// </summary>
-    BATREV,
 
     /// <summary>
     /// Pokémon Black &amp; White version group.

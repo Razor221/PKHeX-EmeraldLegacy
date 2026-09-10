@@ -11,42 +11,39 @@ public sealed class GameDataSource
     /// <summary>
     /// List of <see cref="Region3DSIndex"/> values to display.
     /// </summary>
-    public static readonly IReadOnlyList<ComboItem> Regions =
-    [
-        new ("Japan (日本)",      0),
-        new ("Americas (NA/SA)",  1),
-        new ("Europe (EU/AU)",    2),
-        new ("China (中国大陆)",   4),
-        new ("Korea (한국)",       5),
-        new ("Taiwan (香港/台灣)", 6),
-    ];
+    public readonly IReadOnlyList<ComboItem> Regions;
 
     /// <summary>
     /// List of <see cref="LanguageID"/> values to display.
     /// </summary>
-    private static readonly ComboItem[] LanguageList =
+    private readonly ComboItem[] LanguageList;
+
+    private static ReadOnlySpan<byte> LanguageIDs =>
     [
-        new ("JPN (日本語)",   (int)LanguageID.Japanese),
-        new ("ENG (English)",  (int)LanguageID.English),
-        new ("FRE (Français)", (int)LanguageID.French),
-        new ("ITA (Italiano)", (int)LanguageID.Italian),
-        new ("GER (Deutsch)",  (int)LanguageID.German),
-        new ("ESP (Español)",  (int)LanguageID.Spanish),
-        new ("KOR (한국어)",    (int)LanguageID.Korean),
-        new ("CHS (简体中文)",  (int)LanguageID.ChineseS),
-        new ("CHT (繁體中文)",  (int)LanguageID.ChineseT),
+        (byte)LanguageID.Japanese,
+        (byte)LanguageID.English,
+        (byte)LanguageID.French,
+        (byte)LanguageID.Italian,
+        (byte)LanguageID.German,
+        (byte)LanguageID.Spanish,
+        (byte)LanguageID.Korean,
+        (byte)LanguageID.ChineseS,
+        (byte)LanguageID.ChineseT,
+        (byte)LanguageID.SpanishL,
     ];
 
     /// <summary>
     /// Gets a list of languages to display based on the generation.
     /// </summary>
     /// <param name="generation">Generation to get the language list for.</param>
+    /// <param name="context">Entity context as a sub-generation specifier.</param>
     /// <returns>List of languages to display.</returns>
-    public static IReadOnlyList<ComboItem> LanguageDataSource(byte generation) => generation switch
+    public IReadOnlyList<ComboItem> LanguageDataSource(byte generation, EntityContext context) => generation switch
     {
           3 => LanguageList[..6], // No Korean+
         < 7 => LanguageList[..7], // No Chinese+
-          _ => [.. LanguageList],
+        _ when context is EntityContext.Gen9a => [.. LanguageList],
+        _ => [.. LanguageList.AsSpan(0, LanguageList.Length - 1)],
     };
 
     public GameDataSource(GameStrings s)
@@ -57,6 +54,8 @@ public sealed class GameDataSource
         NatureDataSource = Util.GetCBList(s.natures);
         AbilityDataSource = Util.GetCBList(s.abilitylist);
         GroundTileDataSource = Util.GetUnsortedCBList(s.groundtiletypes, GroundTileTypeExtensions.ValidTileTypes);
+        Regions = Util.GetUnsortedCBList(s.console3ds, Locale3DS.DefinedLocales);
+        LanguageList = Util.GetUnsortedCBList(s.languageNames, LanguageIDs);
 
         var moves = Util.GetCBList(s.movelist);
         HaXMoveDataSource = moves;
@@ -101,6 +100,8 @@ public sealed class GameDataSource
     /// <remarks>Most recent games are at the top, loosely following Generation groups.</remarks>
     private static ReadOnlySpan<byte> OrderedVersionArray =>
     [
+        53,     // Champions
+        52,     // 9 Z-A
         50, 51, // 9 S/V
         47,     // 8 PLA
         48, 49, // 8 BD/SP
@@ -112,7 +113,7 @@ public sealed class GameDataSource
         27, 26, // 6 OR/AS
         21, 20, // 5 B/W
         23, 22, // 5 B2/W2
-        10, 11, 12, // 4 D/P/Pt
+        10, 11, 12, 16, // 4 D/P/Pt/PBR
         07, 08, // 4 HG/SS
         02, 01, 03, // 3 R/S/E
         04, 05, // 3 FR/LG
@@ -137,9 +138,9 @@ public sealed class GameDataSource
         return Util.GetUnsortedCBList(list, OrderedVersionArray);
     }
 
-    public List<ComboItem> GetItemDataSource(GameVersion game, EntityContext context, ReadOnlySpan<ushort> allowed, bool HaX = false)
+    public List<ComboItem> GetItemDataSource(GameVersion version, EntityContext context, ReadOnlySpan<ushort> allowed, bool HaX = false)
     {
-        var items = Strings.GetItemStrings(context, game);
+        var items = Strings.GetItemStrings(context, version);
         return HaX ? Util.GetCBList(items) : Util.GetCBList(items, allowed);
     }
 }

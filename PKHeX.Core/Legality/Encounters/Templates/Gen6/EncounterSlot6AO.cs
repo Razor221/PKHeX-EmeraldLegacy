@@ -7,7 +7,7 @@ namespace PKHeX.Core;
 /// Encounter Slot found in <see cref="GameVersion.ORAS"/>.
 /// </summary>
 public sealed record EncounterSlot6AO(EncounterArea6AO Parent, ushort Species, byte Form, byte LevelMin, byte LevelMax)
-    : IEncounterable, IEncounterMatch, IEncounterConvertible<PK6>, IEncounterFormRandom, IEncounterDownlevel
+    : IEncounterable, IEncounterMatch, IEncounterConvertible<PK6>, IEncounterFormRandom, IEncounterDownlevel, ISingleMoveBonus
 {
     public byte Generation => 6;
     public EntityContext Context => EntityContext.Gen6;
@@ -15,7 +15,7 @@ public sealed record EncounterSlot6AO(EncounterArea6AO Parent, ushort Species, b
     public Ball FixedBall => Ball.None;
     public Shiny Shiny => Shiny.Random;
     public bool IsShiny => false;
-    public ushort EggLocation => 0;
+    ushort ILocation.EggLocation => 0;
     public bool IsRandomUnspecificForm => Form >= EncounterUtil.FormDynamic;
 
     public string Name => $"Wild Encounter ({Version})";
@@ -24,18 +24,25 @@ public sealed record EncounterSlot6AO(EncounterArea6AO Parent, ushort Species, b
     public ushort Location => Parent.Location;
     public SlotType6 Type => Parent.Type;
     public bool CanDexNav => Type != Rock_Smash;
+
+    /// <summary>
+    /// DexNav encounters can provide a move bonus.
+    /// </summary>
+    public bool IsMoveBonusPossible => CanDexNav;
+    public bool IsMoveBonusRequired => false;
+
     public bool IsHorde => Type == Horde;
 
-    private HiddenAbilityPermission IsHiddenAbilitySlot() => CanDexNav || IsHorde ? HiddenAbilityPermission.Possible : HiddenAbilityPermission.Never;
+    private HiddenAbilityPermission IsHiddenAbilitySlot() => IsMoveBonusPossible || IsHorde ? HiddenAbilityPermission.Possible : HiddenAbilityPermission.Never;
 
-    private ReadOnlySpan<ushort> GetDexNavMoves()
+    public ReadOnlySpan<ushort> GetMoveBonusPossible()
     {
         var et = EvolutionTree.Evolves6;
         var baby = et.GetBaseSpeciesForm(Species, Form);
         return LearnSource6AO.Instance.GetEggMoves(baby.Species, baby.Form);
     }
 
-    public bool CanBeDexNavMove(ushort move) => GetDexNavMoves().Contains(move);
+    public bool IsMoveBonus(ushort move) => GetMoveBonusPossible().Contains(move);
 
     public AbilityPermission Ability => IsHiddenAbilitySlot() switch
     {
@@ -57,8 +64,9 @@ public sealed record EncounterSlot6AO(EncounterArea6AO Parent, ushort Species, b
 
     public PK6 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var pi = PersonalTable.AO[Species];
+        var geo = tr.GetRegionOrigin(language);
         var pk = new PK6
         {
             Species = Species,
@@ -71,22 +79,22 @@ public sealed record EncounterSlot6AO(EncounterArea6AO Parent, ushort Species, b
             Ball = (byte)Ball.Poke,
             MetDate = EncounterDate.GetDate3DS(),
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
+
+            ConsoleRegion = geo.ConsoleRegion,
+            Country = geo.Country,
+            Region = geo.Region,
         };
-        if (tr is IRegionOrigin r)
-            r.CopyRegionOrigin(pk);
-        else
-            pk.SetDefaultRegionOrigins(lang);
 
         SetPINGA(pk, criteria, pi);
         EncounterUtil.SetEncounterMoves(pk, Version, LevelMin);
-        if (CanDexNav)
+        if (IsMoveBonusPossible)
         {
-            var eggMoves = GetDexNavMoves();
+            var eggMoves = GetMoveBonusPossible();
             if (eggMoves.Length != 0)
                 pk.RelearnMove1 = eggMoves[Util.Rand.Next(eggMoves.Length)];
         }
@@ -103,23 +111,35 @@ public sealed record EncounterSlot6AO(EncounterArea6AO Parent, ushort Species, b
         return (byte)Util.Rand.Next(PersonalTable.AO[Species].FormCount);
     }
 
-    private void SetPINGA(PK6 pk, EncounterCriteria criteria, PersonalInfo6AO pi)
+    private void SetPINGA(PK6 pk, in EncounterCriteria criteria, PersonalInfo6AO pi)
     {
         var rnd = Util.Rand;
-        pk.PID = rnd.Rand32();
+        pk.PID = EncounterUtil.GetRandomPID(pk, rnd, criteria.Shiny);
         pk.EncryptionConstant = rnd.Rand32();
         pk.Nature = criteria.GetNature();
         pk.Gender = criteria.GetGender(pi);
         pk.RefreshAbility(criteria.GetAbilityFromNumber(Ability));
         criteria.SetRandomIVs(pk);
     }
+
+    public bool TryGetRandomMoveBonus(out ushort move)
+    {
+        var moves = GetMoveBonusPossible();
+        if (moves.Length == 0)
+        {
+            move = 0;
+            return false;
+        }
+        move = moves[Util.Rand.Next(moves.Length)];
+        return true;
+    }
     #endregion
 
     #region Matching
 
-    private const int FluteBoostMin = 4; // White Flute decreases levels.
-    private const int FluteBoostMax = 4; // Black Flute increases levels.
-    private const int DexNavBoost = 29 + FluteBoostMax; // Maximum DexNav chain (95) and Flute.
+    private const byte FluteBoostMin = 4; // White Flute decreases levels.
+    private const byte FluteBoostMax = 4; // Black Flute increases levels.
+    private const byte DexNavBoost = 29 + FluteBoostMax; // Maximum DexNav chain (95) and Flute.
 
     public byte GetDownleveledMin() => (byte)(LevelMin - FluteBoostMin);
 

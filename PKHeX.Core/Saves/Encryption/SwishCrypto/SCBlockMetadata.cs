@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 
@@ -18,6 +19,7 @@ public sealed class SCBlockMetadata
     /// <summary>
     /// Creates a new instance of <see cref="SCBlockMetadata"/> by loading properties and constants declared via reflection.
     /// </summary>
+    [RequiresUnreferencedCode("Uses reflection to enumerate save block accessor properties and constants.")]
     public SCBlockMetadata(SCBlockAccessor accessor, IEnumerable<string> extraKeyNames, params string[] exclusions)
     {
         var aType = accessor.GetType();
@@ -60,6 +62,23 @@ public sealed class SCBlockMetadata
         }
     }
 
+    /// <inheritdoc cref="AddExtraKeyNames(Dictionary{uint,string}, IEnumerable{string})"/>
+    public static void AddExtraKeyNames64(Dictionary<ulong, string> names, IEnumerable<string> lines)
+    {
+        foreach (ReadOnlySpan<char> line in lines)
+        {
+            var split = line.IndexOf('\t');
+            if (split < 0)
+                continue;
+            var hex = line[..split];
+            if (!ulong.TryParse(hex, NumberStyles.HexNumber, CultureInfo.CurrentCulture, out var value))
+                continue;
+
+            var name = line[(split + 1)..].ToString();
+            names.TryAdd(value, name);
+        }
+    }
+
     private static string GetSortKey(in ComboItem item)
     {
         var text = item.Text;
@@ -74,7 +93,7 @@ public sealed class SCBlockMetadata
         var blockName = GetBlockName(z, out _);
         var isBool = z.Type.IsBoolean();
         var type = (isBool ? "Bool" : z.Type.ToString());
-        if (blockName != null)
+        if (blockName is not null)
             return $"*{type} {blockName}";
         var result = $"{z.Key:X8} - {index:0000} {type}";
         if (z.Type is SCTypeCode.Object or SCTypeCode.Array)
@@ -96,7 +115,7 @@ public sealed class SCBlockMetadata
         if (block.Data.Length != 0)
         {
             static bool SameBackingBuffer(IDataIndirect d, ReadOnlyMemory<byte> data) => d.Equals(data);
-            var obj = BlockList.FirstOrDefault(z => SameBackingBuffer(z.Value, block.Data));
+            var obj = BlockList.FirstOrDefault(z => SameBackingBuffer(z.Value, block.Raw));
             if (obj is not (null, null))
             {
                 saveBlock = obj.Value;
@@ -138,14 +157,12 @@ public sealed class SCBlockMetadata
 
     private sealed class WrappedValueView<T>(SCBlock Parent, object currentValue) where T : struct
     {
-        private T _value = (T)Convert.ChangeType(currentValue, typeof(T));
-
         [Description("Stored Value for this Block")]
         public T Value
         {
-            get => _value;
-            set => Parent.SetValue(_value = value);
-        }
+            get;
+            set => Parent.SetValue(field = value);
+        } = (T)Convert.ChangeType(currentValue, typeof(T));
 
         // ReSharper disable once UnusedMember.Local
         [Description("Type of Value this Block stores")]

@@ -13,27 +13,27 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
 {
     private readonly byte MinRank;
     private readonly byte MaxRank;
-    private readonly byte NestID;
+    private readonly byte NestIndex;
 
     private string RankString=> MinRank == MaxRank ? $"{MinRank+1}" : $"{MinRank+1}-{MaxRank+1}";
-    public override string Name => $"Stock Raid Den Encounter [{NestID:000}] {RankString}★";
+    public override string Name => $"Stock Raid Den Encounter [{NestIndex:000}] {RankString}★";
 
-    private bool IsNestLocation(byte loc) => GetNestLocations(NestID).Contains(loc);
+    private bool IsValidMetLocation(byte metLocation) => GetNestLocations(NestIndex).Contains(metLocation);
 
     public override byte Level { get => LevelMin; init { } }
     public override byte LevelMin => LevelCaps[MinRank * 2];
     public override byte LevelMax => LevelCaps[(MaxRank * 2) + 1];
 
-    public EncounterStatic8N(byte nestID, byte minRank, byte maxRank, byte val, [ConstantExpected] GameVersion game) : base(game)
+    public EncounterStatic8N(byte nestIndex, byte minRank, byte maxRank, byte flawless, [ConstantExpected] GameVersion version) : base(version)
     {
-        NestID = nestID;
+        NestIndex = nestIndex;
         MinRank = minRank;
         MaxRank = maxRank;
         DynamaxLevel = (byte)(MinRank + 1u);
-        FlawlessIVCount = val;
+        FlawlessIVCount = flawless;
     }
 
-    public static EncounterStatic8N Read(ReadOnlySpan<byte> data, [ConstantExpected] GameVersion game) => new(data[6], data[7], data[8], data[9], game)
+    public static EncounterStatic8N Read(ReadOnlySpan<byte> data, [ConstantExpected] GameVersion version) => new(data[6], data[7], data[8], data[9], version)
     {
         Species = ReadUInt16LittleEndian(data),
         Form = data[2],
@@ -42,6 +42,7 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
         CanGigantamax = data[5] != 0,
     };
 
+    /// <summary> Level ranges based on <see cref="MinRank"/> and <see cref="MaxRank"/>. </summary>
     private static ReadOnlySpan<byte> LevelCaps =>
     [
         15, 20, // 0
@@ -54,8 +55,8 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
     protected override bool IsMatchLevel(PKM pk)
     {
         var met = pk.MetLevel;
-        var metLevel = met - 15u;
-        var rank = metLevel / 10;
+        var metRank = met - 15u;
+        var rank = metRank / 10;
         if (rank > 4)
             return false;
         if (rank > MaxRank)
@@ -66,15 +67,15 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
             var location = pk.MetLocation;
             if (location <= byte.MaxValue) // Should always be true, no met locations > 255.
             {
-                if (IsInaccessibleRank12Nest(NestID, (byte)location))
+                if (IsInaccessibleRank12Nest(NestIndex, (byte)location))
                     return false;
             }
         }
 
         if (rank < MinRank) // down-leveled
-            return IsDownLeveled(pk, metLevel, met);
+            return IsDownLeveled(pk, metRank, met);
 
-        return metLevel % 10 <= 5;
+        return metRank % 10 <= 5;
     }
 
     private const byte SharedNestMinLevel = 20;
@@ -83,23 +84,22 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
 
     public bool IsDownLeveled(PKM pk)
     {
-        var met = pk.MetLevel;
-        var metLevel = met - 15u;
-        return met != LevelMax && IsDownLeveled(pk, metLevel, met);
+        var metLevel = pk.MetLevel;
+        return metLevel != LevelMax && IsDownLeveled(pk, metLevel - 15u, metLevel);
     }
 
-    private bool IsDownLeveled(PKM pk, uint metLevel, int met)
+    private bool IsDownLeveled(PKM pk, uint metRank, byte metLevel)
     {
-        if (metLevel > int.MaxValue || metLevel % 5 != 0)
+        if (metRank > int.MaxValue || metRank % 5 != 0)
             return false;
 
         // shared nests can be down-leveled to any
         if (pk.MetLocation == SharedNest)
-            return met >= SharedNestMinLevel;
+            return metLevel >= SharedNestMinLevel;
 
         // native down-levels: only allow 1 rank down (1 badge 2star -> 25), (3badge 3star -> 35)
-        return ((MinRank <= 1 && 1 <= MaxRank && met == 25)
-             || (MinRank <= 2 && 2 <= MaxRank && met == 35)) && !pk.IsShiny;
+        return ((MinRank <= 1 && 1 <= MaxRank && metLevel == 25)
+             || (MinRank <= 2 && 2 <= MaxRank && metLevel == 35)) && !pk.IsShiny;
     }
 
     protected override bool IsMatchLocation(PKM pk)
@@ -109,7 +109,7 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
             return true;
         if (loc > byte.MaxValue)
             return false;
-        return IsNestLocation((byte)loc);
+        return IsValidMetLocation((byte)loc);
     }
 
     public (bool Possible, bool ForceNoShiny) IsPossibleSeed<T>(T pk, ulong seed, bool checkDmax) where T : PKM
@@ -160,7 +160,19 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
         return (byte)(baseValue + boost);
     }
 
-    protected override bool TryApply(PK8 pk, ulong seed, Span<int> iv, GenerateParam8 param, EncounterCriteria criteria)
+    public override void GenerateSeed64(PKM pk, ITrainerInfo tr, ulong seed)
+    {
+        var (_, noShiny) = IsPossibleSeed(pk, seed, false);
+        var param = GetParam();
+        if (noShiny) // Should never be hit via ctor as we don't generate downleveled.
+            param = param with { Shiny = Shiny.Never };
+        var criteria = EncounterCriteria.Unrestricted;
+        var pk8 = (PK8)pk;
+        Span<int> iv = stackalloc int[6];
+        RaidRNG.TryApply(pk8, seed, iv, param, criteria);
+    }
+
+    protected override bool TryApply(PK8 pk, ulong seed, Span<int> iv, in GenerateParam8 param, in EncounterCriteria criteria)
     {
         var (possible, noShiny) = IsPossibleSeed(pk, seed, false);
         if (!possible)
@@ -169,7 +181,7 @@ public sealed record EncounterStatic8N : EncounterStatic8Nest<EncounterStatic8N>
         {
             if (criteria.Shiny.IsShiny())
                 return false;
-            param = param with { Shiny = Shiny.Never };
+            return base.TryApply(pk, seed, iv, param with { Shiny = Shiny.Never }, criteria);
         }
         return base.TryApply(pk, seed, iv, param, criteria);
     }

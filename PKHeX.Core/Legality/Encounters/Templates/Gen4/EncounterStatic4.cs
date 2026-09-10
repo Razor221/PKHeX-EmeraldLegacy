@@ -1,5 +1,7 @@
+using System;
 using System.Diagnostics.CodeAnalysis;
 using static PKHeX.Core.GroundTileAllowed;
+using static PKHeX.Core.RandomCorrelationRating;
 
 namespace PKHeX.Core;
 
@@ -35,7 +37,7 @@ public sealed record EncounterStatic4(GameVersion Version)
     public byte LevelMax => Level;
 
     /// <summary> Indicates if the encounter is a Roamer (variable met location) </summary>
-    public bool Roaming { get; init; }
+    public bool IsRoaming { get; init; }
 
     /// <summary> <see cref="PK4.GroundTile"/> values permitted for the encounter. </summary>
     public GroundTileAllowed GroundTile { get; init; } = None;
@@ -51,7 +53,7 @@ public sealed record EncounterStatic4(GameVersion Version)
 
     public PK4 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage456((LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
         var pi = PersonalTable.HGSS[Species];
         var pk = new PK4
@@ -69,11 +71,11 @@ public sealed record EncounterStatic4(GameVersion Version)
             Ball = (byte)(FixedBall != Ball.None ? FixedBall : Ball.Poke),
             FatefulEncounter = FatefulEncounter,
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
 
         if (IsEgg)
@@ -99,47 +101,160 @@ public sealed record EncounterStatic4(GameVersion Version)
         return pk;
     }
 
-    private void SetPINGA(PK4 pk, EncounterCriteria criteria, PersonalInfo4 pi)
+    private void SetPINGA(PK4 pk, in EncounterCriteria criteria, PersonalInfo4 pi)
     {
         // Pichu is special -- use Pokewalker method
+        var gr = pi.Gender;
         if (Species == (int)Core.Species.Pichu)
         {
-            var pid = pk.PID = PokewalkerRNG.GetPID(pk.ID32, (uint)Nature, pk.Gender = Gender, pi.Gender);
+            var pid = pk.PID = PokewalkerRNG.GetPID(pk.ID32, (uint)Nature, pk.Gender = Gender, gr);
             pk.RefreshAbility((int)(pid & 1));
             criteria.SetRandomIVs(pk); // IVs are sufficiently random; set based on request.
-            return;
         }
-
-        var gender = criteria.GetGender(Gender, pi);
-        var nature = criteria.GetNature(Nature);
-        int ability = criteria.GetAbilityFromNumber(Ability);
-        if (Shiny == Shiny.Always) // Chain Shiny
+        else if (Shiny == Shiny.Always) // Chain Shiny
         {
-            SetChainShiny(pk, pi.Gender, ability, gender, nature);
-            return;
+            if (criteria.IsSpecifiedIVsAll() && TrySetChainShiny(pk, criteria, gr))
+                return;
+            SetChainShiny(pk, criteria, gr, Util.Rand32());
         }
-        PIDType type = this is { Shiny: Shiny.Always } ? PIDType.ChainShiny : PIDType.Method_1;
-        PIDGenerator.SetRandomWildPID4(pk, nature, ability, gender, type);
+        else
+        {
+            if (criteria.IsSpecifiedIVsAll() && TrySetMethod1(pk, criteria, gr))
+                return;
+            SetMethod1(pk, criteria, gr, Util.Rand32());
+        }
     }
 
-    private static void SetChainShiny(PK4 pk, byte gr, int ability, byte gender, Nature nature)
+    private static bool TrySetMethod1(PK4 pk, in EncounterCriteria criteria, byte gr)
     {
-        pk.RefreshAbility(ability);
-        pk.Gender = gender;
-        var seed = Util.Rand32();
-        var id32 = pk.ID32;
-        while (true)
+        criteria.GetCombinedIVs(out var iv1, out var iv2);
+
+        Span<uint> seeds = stackalloc uint[LCRNG.MaxCountSeedsIV];
+        var count = LCRNGReversal.GetSeedsIVs(seeds, iv1 << 16, iv2 << 16);
+        foreach (var s in seeds[..count])
         {
-            var pid = ClassicEraRNG.GetChainShinyPID(ref seed, id32);
-            if ((Nature)(pid % 25) != nature)
+            var seed = LCRNG.Prev2(s); // Unwind the RNG to get the real origin seed for the PID/IV
+            var pid = ClassicEraRNG.GetSequentialPID(seed);
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
                 continue;
-            if (EntityGender.GetFromPIDAndRatio(pid, gr) != gender)
+
+            var gender = EntityGender.GetFromPIDAndRatio(pid, gr);
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
                 continue;
-            if ((pid & 1) != ability)
+
+            var abit = (int)(pid & 1);
+            if (criteria.IsSpecifiedAbility() && !criteria.IsSatisfiedAbility(abit))
                 continue;
 
             pk.PID = pid;
-            pk.IV32 = ClassicEraRNG.GetSequentialIVs(ref seed);
+            pk.IV32 |= iv2 << 15 | iv1;
+            pk.Gender = gender;
+            pk.RefreshAbility(abit);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void SetMethod1(PK4 pk, in EncounterCriteria criteria, byte gr, uint seed)
+    {
+        var id32 = pk.ID32;
+        var filterIVs = criteria.IsSpecifiedIVs(2);
+        while (true)
+        {
+            var pid = ClassicEraRNG.GetSequentialPID(ref seed);
+            var shiny = ShinyUtil.GetIsShiny3(id32, pid);
+            if (criteria.Shiny.IsShiny() != shiny)
+                continue;
+
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
+                continue;
+
+            var gender = EntityGender.GetFromPIDAndRatio(pid, gr);
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
+                continue;
+
+            var abit = (int)(pid & 1);
+            if (criteria.IsSpecifiedAbility() && !criteria.IsSatisfiedAbility(abit))
+                continue;
+
+            var iv32 = ClassicEraRNG.GetSequentialIVs(ref seed);
+            if (criteria.IsSpecifiedHiddenPower() && !criteria.IsSatisfiedHiddenPower(iv32))
+                continue;
+            if (filterIVs && !criteria.IsSatisfiedIVs(iv32))
+                continue;
+
+            pk.PID = pid;
+            pk.IV32 |= iv32;
+            pk.Gender = gender;
+            pk.RefreshAbility(abit);
+            break;
+        }
+    }
+
+    private static bool TrySetChainShiny(PK4 pk, in EncounterCriteria criteria, byte gr)
+    {
+        var id32 = pk.ID32;
+        criteria.GetCombinedIVs(out var iv1, out var iv2);
+
+        Span<uint> seeds = stackalloc uint[LCRNG.MaxCountSeedsIV];
+        var count = LCRNGReversal.GetSeedsIVs(seeds, iv1 << 16, iv2 << 16);
+        foreach (var seed in seeds[..count])
+        {
+            var prev3 = LCRNG.Prev3(seed); // Unwind the RNG to get the real origin seed for the PID/IV
+            var pid = ClassicEraRNG.GetChainShinyPID(ref prev3, id32);
+            var shiny = ShinyUtil.GetIsShiny3(id32, pid);
+            if (criteria.Shiny.IsShiny() != shiny)
+                continue;
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
+                continue;
+
+            var gender = EntityGender.GetFromPIDAndRatio(pid, gr);
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
+                continue;
+
+            var abit = (int)(pid & 1);
+            if (criteria.IsSpecifiedAbility() && !criteria.IsSatisfiedAbility(abit))
+                continue;
+
+            pk.PID = pid;
+            pk.IV32 = iv2 << 15 | iv1;
+            pk.Gender = gender;
+            pk.RefreshAbility(abit);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void SetChainShiny(PK4 pk, in EncounterCriteria criteria, byte gr, uint seed)
+    {
+        var id32 = pk.ID32;
+        var filterIVs = criteria.IsSpecifiedIVs(2);
+        while (true)
+        {
+            var pid = ClassicEraRNG.GetChainShinyPID(ref seed, id32);
+            if (criteria.IsSpecifiedNature() && !criteria.IsSatisfiedNature(pid))
+                continue;
+
+            var gender = EntityGender.GetFromPIDAndRatio(pid, gr);
+            if (criteria.IsSpecifiedGender() && !criteria.IsSatisfiedGender(gender))
+                continue;
+
+            var abit = (int)(pid & 1);
+            if (criteria.IsSpecifiedAbility() && !criteria.IsSatisfiedAbility(abit))
+                continue;
+
+            var iv32 = ClassicEraRNG.GetSequentialIVs(ref seed);
+            if (criteria.IsSpecifiedHiddenPower() && !criteria.IsSatisfiedHiddenPower(iv32))
+                continue;
+            if (filterIVs && !criteria.IsSatisfiedIVs(iv32))
+                continue;
+
+            pk.PID = pid;
+            pk.IV32 = iv32;
+            pk.Gender = gender;
+            pk.RefreshAbility(abit);
             break;
         }
     }
@@ -156,7 +271,7 @@ public sealed record EncounterStatic4(GameVersion Version)
 
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
-        if (!IsMatchEggLocation(pk))
+        if (!IsMatchEggLocationInternal(pk))
             return false;
         if (!IsMatchLocation(pk))
             return false;
@@ -177,8 +292,8 @@ public sealed record EncounterStatic4(GameVersion Version)
 
         var met = pk4.MetLocation;
         if (IsEgg)
-            return true;
-        if (!Roaming)
+            return !pk.IsEgg || (met == Location || met == Locations.LinkTrade4);
+        if (!IsRoaming)
             return met == Location;
 
         return pk4.GroundTile switch
@@ -189,13 +304,10 @@ public sealed record EncounterStatic4(GameVersion Version)
         };
     }
 
-    private bool IsMatchEggLocation(PKM pk)
+    private bool IsMatchEggLocationInternal(PKM pk)
     {
         if (!IsEgg)
-        {
-            var expect = pk is PB8 ? Locations.Default8bNone : EggLocation;
-            return pk.EggLocation == expect;
-        }
+            return this.IsMatchEggLocation(pk);
 
         var eggLoc = pk.EggLocation;
         // Transferring 4->5 clears Pt/HG/SS location value and keeps Faraway Place
@@ -211,11 +323,7 @@ public sealed record EncounterStatic4(GameVersion Version)
             return eggLoc == EggLocation || eggLoc == Locations.LinkTrade4;
 
         // Unhatched:
-        if (eggLoc != EggLocation)
-            return false;
-        if (pk4.MetLocation is not (0 or Locations.LinkTrade4))
-            return false;
-        return true;
+        return eggLoc == EggLocation;
     }
 
     private static bool IsMatchLocationGrass(ushort location, ushort met) => location switch
@@ -275,17 +383,17 @@ public sealed record EncounterStatic4(GameVersion Version)
 
     #endregion
 
-    public bool IsCompatible(PIDType type, PKM pk)
+    public RandomCorrelationRating IsCompatible(PIDType type, PKM pk)
     {
         if (Species == (int)Core.Species.Pichu)
-            return type == PIDType.Pokewalker;
+            return type is PIDType.Pokewalker ? Match : Mismatch;
         if (Shiny == Shiny.Always)
-            return type == PIDType.ChainShiny;
+            return type is PIDType.ChainShiny ? Match : Mismatch;
         if (type is PIDType.Method_1)
-            return true;
+            return Match;
         if (type is PIDType.CuteCharm)
-            return MethodFinder.IsCuteCharm4Valid(this, pk);
-        return false;
+            return CuteCharm4.IsValid(this, pk) ? Match : Mismatch;
+        return Mismatch;
     }
 
     public PIDType GetSuggestedCorrelation()
