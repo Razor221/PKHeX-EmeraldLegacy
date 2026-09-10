@@ -150,6 +150,7 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     public uint GetTrainerHillRecord(TrainerHillMode3E mode)
     {
         return ReadUInt32LittleEndian(Large.AsSpan(OFS_TrainerHillRecord + ((byte)mode * 4)));
+    }
 
     public void SetTrainerHillRecord(TrainerHillMode3E mode, uint value)
     {
