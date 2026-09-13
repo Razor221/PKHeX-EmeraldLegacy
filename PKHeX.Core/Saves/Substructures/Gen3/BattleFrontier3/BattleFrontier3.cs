@@ -17,13 +17,13 @@ public ref struct BattleFrontier3(Span<byte> data)
     private const int ContinueOffset = 0x000;
 
     /// <summary>Event flag index for the Frontier Pass activation.</summary>
-    public static int FrontierPassFlagIndex => 0x860 + 0x72;
+    public static int FrontierPassFlagIndex => 0x8C0 + 0x72;
 
     /// <summary>Gets the event flag index for a facility's silver symbol.</summary>
-    public static int GetSymbolSilverFlagIndex(BattleFrontierFacility3 facility) => 0x860 + 0x64 + ((int)facility * 2);
+    public static int GetSymbolSilverFlagIndex(BattleFrontierFacility3 facility) => 0x8C0 + 0x64 + ((int)facility * 2);
 
     /// <summary>Gets the event flag index for a facility's gold symbol.</summary>
-    public static int GetSymbolGoldFlagIndex(BattleFrontierFacility3 facility) => 0x860 + 0x64 + ((int)facility * 2) + 1;
+    public static int GetSymbolGoldFlagIndex(BattleFrontierFacility3 facility) => 0x8C0 + 0x64 + ((int)facility * 2) + 1;
 
     #region Streaks and Statistics
     /// <summary>

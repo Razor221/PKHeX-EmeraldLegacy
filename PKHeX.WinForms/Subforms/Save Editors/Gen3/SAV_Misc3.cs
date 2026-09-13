@@ -228,11 +228,11 @@ public partial class SAV_Misc3 : Form
 
     private void ReadFerry()
     {
-        CHK_Catchable.Checked = SAV.GetEventFlag(0x864);
-        CHK_ReachSouthern.Checked = SAV.GetEventFlag(0x8B3);
-        CHK_ReachBirth.Checked = SAV.GetEventFlag(0x8D5);
-        CHK_ReachFaraway.Checked = SAV.GetEventFlag(0x8D6);
-        CHK_ReachNavel.Checked = SAV.GetEventFlag(0x8E0);
+        CHK_Catchable.Checked = SAV.GetEventFlag(0x8C4);
+        CHK_ReachSouthern.Checked = SAV.GetEventFlag(0x913);
+        CHK_ReachBirth.Checked = SAV.GetEventFlag(0x935);
+        CHK_ReachFaraway.Checked = SAV.GetEventFlag(0x936);
+        CHK_ReachNavel.Checked = SAV.GetEventFlag(0x940);
         CHK_ReachBF.Checked = SAV.GetEventFlag(0x1D0);
         CHK_InitialSouthern.Checked = SAV.GetEventFlag(0x1AE);
         CHK_InitialBirth.Checked = SAV.GetEventFlag(0x1AF);
@@ -242,11 +242,11 @@ public partial class SAV_Misc3 : Form
 
     private void SaveFerry()
     {
-        SAV.SetEventFlag(0x864, CHK_Catchable.Checked);
-        SAV.SetEventFlag(0x8B3, CHK_ReachSouthern.Checked);
-        SAV.SetEventFlag(0x8D5, CHK_ReachBirth.Checked);
-        SAV.SetEventFlag(0x8D6, CHK_ReachFaraway.Checked);
-        SAV.SetEventFlag(0x8E0, CHK_ReachNavel.Checked);
+        SAV.SetEventFlag(0x8C4, CHK_Catchable.Checked);
+        SAV.SetEventFlag(0x913, CHK_ReachSouthern.Checked);
+        SAV.SetEventFlag(0x935, CHK_ReachBirth.Checked);
+        SAV.SetEventFlag(0x936, CHK_ReachFaraway.Checked);
+        SAV.SetEventFlag(0x940, CHK_ReachNavel.Checked);
         SAV.SetEventFlag(0x1D0, CHK_ReachBF.Checked);
         SAV.SetEventFlag(0x1AE, CHK_InitialSouthern.Checked);
         SAV.SetEventFlag(0x1AF, CHK_InitialBirth.Checked);

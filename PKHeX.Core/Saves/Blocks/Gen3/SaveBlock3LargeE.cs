@@ -44,7 +44,7 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
     public int EventFlagCount => 8 * 300;
     public int EventWorkCount => 0x100;
     public int EggEventFlag => 0x86;
-    public int BadgeFlagStart => 0x867;
+    public int BadgeFlagStart => 0x8C7;
 
     public bool GetEventFlag(int flagNumber)
     {

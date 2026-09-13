@@ -38,7 +38,7 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
         {
             SmallBlock.PokedexMode = value ? (byte)1 : (byte)0; // mode
             SmallBlock.PokedexNationalMagicRSE = value ? PokedexNationalUnlockRSE : (byte)0; // magic
-            SetEventFlag(0x896, value);
+            SetEventFlag(0x8F6, value);
             SetWork(0x46, PokedexNationalUnlockWorkRSE);
         }
     }
