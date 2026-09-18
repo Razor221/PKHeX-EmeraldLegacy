@@ -40,7 +40,7 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
     public void SetBerryBlenderRPMRecord(int index, ushort value) => WriteUInt16LittleEndian(GetBlenderRPMSpan(index), value);
 
     private const int EventFlag = 0x13D8;
-    private const int EventWork = 0x1504;
+    private const int EventWork = 0x1510;
     public int EventFlagCount => 8 * 300;
     public int EventWorkCount => 0x100;
     public int EggEventFlag => 0x86;
@@ -63,7 +63,7 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
     public ushort GetWork(int index) => ReadUInt16LittleEndian(Data[(EventWork + (index * 2))..]);
     public void SetWork(int index, ushort value) => WriteUInt16LittleEndian(Data[EventWork..][(index * 2)..], value);
 
-    private const int RecordOffset = 0x1704;
+    private const int RecordOffset = 0x1714;
     private static int GetRecordOffset(RecID3Emerald record)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)record, (uint)RecID3Emerald.NUM_GAME_STATS);
@@ -76,12 +76,12 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
     public void SetRecord(RecID3Emerald record, uint value) => WriteUInt32LittleEndian(Data[GetRecordOffset(record)..], value);
     public void AddRecord(RecID3Emerald record, uint value) => SetRecord(record, GetRecord(record) + value);
 
-    private Memory<byte> SecretBaseData => Raw.Slice(0x1C04, SecretBaseManager3.BaseCount * SecretBase3.SIZE);
+    private Memory<byte> SecretBaseData => Raw.Slice(0x1C14, SecretBaseManager3.BaseCount * SecretBase3.SIZE);
     public SecretBaseManager3 SecretBases => new(SecretBaseData);
 
-    public DecorationInventory3 Decorations => new(Data.Slice(0x289C, DecorationInventory3.SIZE));
+    public DecorationInventory3 Decorations => new(Data.Slice(0x28AC, DecorationInventory3.SIZE));
 
-    private Span<byte> SwarmData => Data.Slice(0x2CF8, Swarm3.SIZE);
+    private Span<byte> SwarmData => Data.Slice(0x2D08, Swarm3.SIZE);
     public Swarm3 Swarm { get => new(SwarmData.ToArray()); set => value.Data.CopyTo(SwarmData); }
     private void ClearSwarm() => SwarmData.Clear();
     public IReadOnlyList<Swarm3> DefaultSwarms => Swarm3Details.Swarms_E;
@@ -108,7 +108,7 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
         }
     }
 
-    private const int MailOffset = 0x2D48;
+    private const int MailOffset = 0x2D58;
     private static int GetMailOffset(int index) => (index * Mail3.SIZE) + MailOffset;
     private Span<byte> GetMailSpan(int ofs) => Data.Slice(ofs, Mail3.SIZE);
 
@@ -125,11 +125,11 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
         value.CopyTo(GetMailSpan(ofs));
     }
 
-    private const int OFS_TrendyWord = 0x2F88;
+    private const int OFS_TrendyWord = 0x2F98;
     public bool GetTrendyWordUnlocked(TrendyWord3E word) => FlagUtil.GetFlag(Data, OFS_TrendyWord + ((byte)word >> 3), (byte)word & 7);
     public void SetTrendyWordUnlocked(TrendyWord3E word, bool value) => FlagUtil.SetFlag(Data, OFS_TrendyWord + ((byte)word >> 3), (byte)word & 7, value);
 
-    private const int Painting = 0x2F90;
+    private const int Painting = 0x2FA0;
     private const int PaintingCount = 5;
     private Span<byte> GetPaintingSpan(int index)
     {
@@ -140,26 +140,26 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
     public Paintings3 GetPainting(int index, bool japanese) => new(GetPaintingSpan(index).ToArray(), japanese);
     public void SetPainting(int index, Paintings3 value) => value.Data.CopyTo(GetPaintingSpan(index));
 
-    public int DaycareOffset => 0x3198;
+    public int DaycareOffset => 0x31A8;
     public int DaycareSlotSize => PokeCrypto.SIZE_3STORED + 0x3C; // 0x38 mail + 4 exp
 
     public uint DaycareSeed
     {
-        get => ReadUInt32LittleEndian(Data[0x32B0..]);
-        set => WriteUInt32LittleEndian(Data[0x32B0..], value);
+        get => ReadUInt32LittleEndian(Data[0x32C0..]);
+        set => WriteUInt32LittleEndian(Data[0x32C0..], value);
     }
 
-    public Span<byte> GiftRibbons => Data.Slice(0x331B, 11);
-    public int ExternalEventData => 0x331B;
-    public Memory<byte> RoamerData => Raw.Slice(0x3344, Roamer3.SIZE);
-    private const int OFFSET_EBERRY = 0x3360;
+    public Span<byte> GiftRibbons => Data.Slice(0x332B, 11);
+    public int ExternalEventData => 0x332B;
+    public Memory<byte> RoamerData => Raw.Slice(0x3354, Roamer3.SIZE);
+    private const int OFFSET_EBERRY = 0x3370;
     private const int SIZE_EBERRY = 0x34;
     public Span<byte> EReaderBerry => Data.Slice(OFFSET_EBERRY, SIZE_EBERRY);
 
-    public const int WonderNewsOffset = 0x3394;
+    public const int WonderNewsOffset = 0x33A4;
 
     // RAM Script
-    private Span<byte> MysterySpan => Data.Slice(0x3728, MysteryEvent3.SIZE);
+    private Span<byte> MysterySpan => Data.Slice(0x3738, MysteryEvent3.SIZE);
     public Gen3MysteryData MysteryData
     {
         get => new MysteryEvent3(MysterySpan.ToArray());
@@ -180,22 +180,22 @@ public sealed record SaveBlock3LargeE(Memory<byte> Raw) : ISaveBlock3LargeExpans
     public WonderCard3Extra GetWonderCardExtra(bool isJapanese) => new(WonderCardExtraData(isJapanese).ToArray());
     public void SetWonderCardExtra(bool isJapanese, ReadOnlySpan<byte> data) => data.CopyTo(WonderCardExtraData(isJapanese));
 
-    private const int OFS_TrainerHillRecord = 0x3718;
+    private const int OFS_TrainerHillRecord = 0x3728;
 
     /** Each value unit represents 1/60th of a second. Value 0 if no record. */
     public uint GetTrainerHillRecord(TrainerHillMode3E mode) => ReadUInt32LittleEndian(Data[(OFS_TrainerHillRecord + ((byte)mode * 4))..]);
     public void SetTrainerHillRecord(TrainerHillMode3E mode, uint value) => WriteUInt32LittleEndian(Data[(OFS_TrainerHillRecord + ((byte)mode * 4))..], value);
 
-    private Span<byte> RecordMixingData => Data.Slice(0x3B14, RecordMixing3Gift.SIZE);
+    private Span<byte> RecordMixingData => Data.Slice(0x3B24, RecordMixing3Gift.SIZE);
     public RecordMixing3Gift RecordMixingGift
     {
         get => new(RecordMixingData.ToArray());
         set => value.Data.CopyTo(RecordMixingData);
     }
 
-    public int SeenOffset3 => 0x3B24;
+    public int SeenOffset3 => 0x3B34;
 
-    private const int Walda = 0x3D70;
+    private const int Walda = 0x3D80;
     public ushort WaldaBackgroundColor { get => ReadUInt16LittleEndian(Data[(Walda + 0)..]); set => WriteUInt16LittleEndian(Data[(Walda + 0)..], value); }
     public ushort WaldaForegroundColor { get => ReadUInt16LittleEndian(Data[(Walda + 2)..]); set => WriteUInt16LittleEndian(Data[(Walda + 2)..], value); }
     public byte WaldaIconID { get => Data[Walda + 0x14]; set => Data[Walda + 0x14] = value; }
