@@ -406,6 +406,7 @@ public static class FormInfo
     public static bool IsValidOutOfBoundsForm(ushort species, byte form, byte format) => (Species) species switch
     {
         Unown => form < (format == 2 ? 26 : 28), // A-Z : A-Z?!
+        Deoxys => form < 4,
         Mothim => form < 3, // Burmy base form is kept
 
         Scatterbug => form <= Vivillon3DS.MaxWildFormID, // Vivillon Pre-evolutions
