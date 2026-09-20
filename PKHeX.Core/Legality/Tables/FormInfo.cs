@@ -439,6 +439,7 @@ public static class FormInfo
     private static bool HasFormValuesNotIndicatedByPersonal(ushort species) => species switch
     {
         (int)Unown => true,
+        (int)Deoxys => true,
         (int)Mothim => true, // (Burmy form is not cleared on evolution)
         (int)Scatterbug or (int)Spewpa => true, // Vivillon pre-evos
         _ => false,
