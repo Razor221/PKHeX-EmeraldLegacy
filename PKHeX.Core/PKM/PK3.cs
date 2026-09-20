@@ -81,6 +81,8 @@ public sealed class PK3 : G3PKM, ISanityChecksum
         set
         {
             var s3 = SpeciesConverter.GetInternal3(value);
+            if (value == (int)Core.Species.Deoxys && (SpeciesInternal == 412 || SpeciesInternal == 413 || SpeciesInternal == 414))
+                s3 = SpeciesInternal;
             FlagHasSpecies = (SpeciesInternal = s3) != 0;
         }
     }
