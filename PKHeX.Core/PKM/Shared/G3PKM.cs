@@ -63,14 +63,38 @@ public abstract class G3PKM : PKM, IRibbonSetEvent3, IRibbonSetCommon3, IRibbonS
 
     public sealed override byte Form
     {
-        get => Species == (int)Core.Species.Unown ? EntityPID.GetUnownForm3(PID) : (byte)0;
+        get
+        {
+            if (Species == (int)Core.Species.Unown)
+                return EntityPID.GetUnownForm3(PID);
+            if (Species == (int)Core.Species.Deoxys)
+            {
+                return SpeciesInternal switch {
+                    413 => 1,
+                    414 => 2,
+                    412 => 3,
+                    _ => 0,
+                };
+            }
+            return 0;
+        }
         set
         {
-            if (Species != (int)Core.Species.Unown)
-                return;
-            var rnd = Util.Rand;
-            while (EntityPID.GetUnownForm3(PID) != value)
-                PID = rnd.Rand32();
+            if (Species == (int)Core.Species.Unown)
+            {
+                var rnd = Util.Rand;
+                while (EntityPID.GetUnownForm3(PID) != value)
+                    PID = rnd.Rand32();
+            }
+            else if (Species == (int)Core.Species.Deoxys)
+            {
+                SpeciesInternal = (ushort)(value switch {
+                    1 => 413,
+                    2 => 414,
+                    3 => 412,
+                    _ => 410,
+                });
+            }
         }
     }
 
