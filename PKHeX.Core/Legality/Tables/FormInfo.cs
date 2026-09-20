@@ -423,7 +423,7 @@ public static class FormInfo
     /// <returns>True if it has forms that can be provided by <see cref="FormConverter"/>, otherwise false for none.</returns>
     public static bool HasFormSelection(IPersonalFormInfo pi, ushort species, byte format)
     {
-        if (format <= 3 && species != (int)Unown)
+        if (format <= 3 && species != (int)Unown && species != (int)Deoxys)
             return false;
 
         if (HasFormValuesNotIndicatedByPersonal(species))
