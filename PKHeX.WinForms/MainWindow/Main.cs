@@ -1300,9 +1300,9 @@ public partial class Main : Form
             {
                 mainDragOutActive = false;
                 C_SAV.M.Drag.ResetCursor(this);
+                PKME_Tabs.NotifyWasExported(preModify); // restore pre-modify state, in case the user drags into the same program window
                 await DeleteAsync(newFile, 20_000).ConfigureAwait(false);
             }
-            PKME_Tabs.NotifyWasExported(preModify); // restore pre-modify state, in case the user drags into the same program window
         }
         catch
         {

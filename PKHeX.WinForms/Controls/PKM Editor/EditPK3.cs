@@ -27,6 +27,7 @@ public partial class PKMEditor
         if (Entity is not G3PKM pk3)
             throw new FormatException(nameof(Entity));
 
+        pk3.Species = (ushort)WinFormsUtil.GetIndex(CB_Species);
         SaveMisc3(pk3); // save Language first so that Nickname/etc encode properly
         SaveMisc2(pk3); // save IsEgg prior to setting ^
         SaveMisc1(pk3);
