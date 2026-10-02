@@ -19,12 +19,12 @@ public sealed class SAV3E : SAV3, IDaycareRandomState<uint>
     public SAV3E(Memory<byte> data) : base(data)
     {
         SmallBlock = new SaveBlock3SmallE(SmallBuffer[..0xF2C]);
-        LargeBlock = new SaveBlock3LargeE(LargeBuffer[..0x3D88]);
+        LargeBlock = new SaveBlock3LargeE(LargeBuffer[..0x3D98]);
     }
     public SAV3E(bool japanese = false) : base(japanese)
     {
         SmallBlock = new SaveBlock3SmallE(SmallBuffer[..0xF2C]);
-        LargeBlock = new SaveBlock3LargeE(LargeBuffer[..0x3D88]);
+        LargeBlock = new SaveBlock3LargeE(LargeBuffer[..0x3D98]);
     }
 
     public override PlayerBag3E Inventory => new(this);
