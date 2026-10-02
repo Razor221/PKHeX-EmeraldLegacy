@@ -9,7 +9,7 @@ public class EffortExpLegalityTests
     private static readonly int[] Empty = new int[6];
 
     [Fact]
-    public void ZeroEVs_ReturnsZero()
+    public void ZeroEVs_ReturnsNegativeGainedEXP()
     {
         EffortExpLegality.GetRequiredEffortEXP(
                 Empty,
@@ -17,7 +17,7 @@ public class EffortExpLegalityTests
                 hasPokerus: false,
                 originFormat: 4,
                 currentFormat: 4)
-            .Should().Be(0);
+            .Should().Be(-999);
     }
 
     [Theory]
