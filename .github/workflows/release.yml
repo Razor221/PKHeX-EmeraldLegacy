@@ -25,6 +25,9 @@ jobs:
     - name: Publish PKHeX
       run: dotnet publish PKHeX.WinForms/PKHeX.WinForms.csproj --configuration Release --output publish_output
 
+    - name: Remove PDB files
+      run: Get-ChildItem -Path publish_output -Filter *.pdb -Recurse | Remove-Item -Force
+
     - name: Create Zip Archive
       run: Compress-Archive -Path publish_output\* -DestinationPath PKHeX-EmeraldLegacy.zip
 
